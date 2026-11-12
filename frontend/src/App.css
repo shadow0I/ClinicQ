@@ -1608,3 +1608,149 @@
     width: 100%;
   }
 }
+
+/* Staff workspace tabs */
+
+.sidebar-link {
+  width: 100%;
+  border: 0;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sidebar-link:focus-visible {
+  outline: 3px solid rgba(35, 129, 95, 0.25);
+  outline-offset: 2px;
+}
+
+/* Individual tab page headings */
+
+.tab-page-heading {
+  margin: 4px 0 25px;
+}
+
+.tab-page-heading h2 {
+  margin: 8px 0;
+  color: #244638;
+  font-size: 29px;
+  font-weight: 700;
+}
+
+.tab-page-heading p {
+  margin: 0;
+  color: #87968e;
+  line-height: 1.6;
+}
+
+/* Dashboard */
+
+.tab-page-heading + .stats-grid {
+  margin-top: 0;
+}
+
+/* Consultations */
+
+.consultations-page {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.consultation-summary-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.consultation-summary-card > div {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 25px;
+  border: 1px solid #e0ebe4;
+  border-radius: 17px;
+  background: #ffffff;
+}
+
+.consultation-summary-card span {
+  color: #87968e;
+  font-size: 14px;
+}
+
+.consultation-summary-card strong {
+  color: #244638;
+  font-size: 30px;
+}
+
+.consultation-history-panel {
+  min-width: 0;
+}
+
+.consultations-empty {
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.consultations-empty strong {
+  color: #345345;
+}
+
+.consultations-empty p {
+  color: #87968e;
+}
+
+@media (max-width: 600px) {
+  .tab-page-heading h2 {
+    font-size: 24px;
+  }
+
+  .consultation-summary-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-next-patient {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  margin-top: 22px;
+  padding: 20px;
+  box-sizing: border-box;
+  border: 1px solid #dcebe2;
+  border-radius: 14px;
+  background: #f5faf7;
+}
+
+.dashboard-next-patient > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dashboard-next-token {
+  color: #176d52;
+  font-size: 30px;
+}
+
+.dashboard-next-patient > div > span:last-child {
+  color: #87968e;
+  font-size: 13px;
+}
+
+.dashboard-next-patient .start-action {
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .dashboard-next-patient {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-next-patient .start-action {
+    width: 100%;
+  }
+}

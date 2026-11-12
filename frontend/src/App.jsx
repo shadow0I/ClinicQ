@@ -64,6 +64,7 @@ function getStatusLabel(status) {
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null)
+  const [activeTab, setActiveTab] = useState('dashboard')
   const [authChecking, setAuthChecking] = useState(true)
 
   const [clinicCode, setClinicCode] = useState('')
@@ -512,22 +513,36 @@ function handleDismissRegistration() {
 
         <div className="sidebar-label">WORKSPACE</div>
 
-        <nav className="sidebar-nav">
-          <div className="sidebar-link active">
-            <span className="nav-icon">▦</span>
-            Dashboard
-          </div>
+        
+<nav className="sidebar-nav">
+  <button
+    type="button"
+    className={`sidebar-link ${activeTab === 'dashboard' ? 'active' : ''}`}
+    onClick={() => setActiveTab('dashboard')}
+  >
+    <span className="nav-icon">▦</span>
+    Dashboard
+  </button>
 
-          <div className="sidebar-link">
-            <span className="nav-icon">≡</span>
-            Patient queue
-          </div>
+  <button
+    type="button"
+    className={`sidebar-link ${activeTab === 'queue' ? 'active' : ''}`}
+    onClick={() => setActiveTab('queue')}
+  >
+    <span className="nav-icon">≡</span>
+    Patient queue
+  </button>
 
-          <div className="sidebar-link">
-            <span className="nav-icon">◷</span>
-            Consultations
-          </div>
-        </nav>
+  <button
+    type="button"
+    className={`sidebar-link ${activeTab === 'consultations' ? 'active' : ''}`}
+    onClick={() => setActiveTab('consultations')}
+  >
+    <span className="nav-icon">◷</span>
+    Consultations
+  </button>
+</nav>
+
 
         <div className="sidebar-bottom">
           <div className="sidebar-clinic">
@@ -609,6 +624,13 @@ function handleDismissRegistration() {
 
           {queue ? (
             <>
+            {activeTab === 'dashboard' && (
+  <>
+    <div className="tab-page-heading">
+      <span className="panel-eyebrow">CLINIC WORKSPACE</span>
+      <h2>Dashboard</h2>
+      <p>Your clinic overview and daily operations.</p>
+    </div>
               <section className="stats-grid">
                 <article className="stat-card">
                   <span className="stat-label">Waiting patients</span>
@@ -933,16 +955,58 @@ function handleDismissRegistration() {
                           : '✓ Complete consultation'}
                       </button>
                     </>
-                  ) : (
-                    <div className="empty-consultation">
-                      <div className="empty-icon">○</div>
-                      <strong>No active consultation</strong>
-                      <p>
-                        Start the next waiting patient when the doctor
-                        is ready.
-                      </p>
-                    </div>
-                  )}
+                  
+) : (
+  <div className="empty-consultation">
+    <div className="empty-icon">◯</div>
+    <strong>No active consultation</strong>
+
+    {firstWaiting ? (
+      <>
+        <div className="dashboard-next-patient">
+          <div>
+            <span className="active-token-label">NEXT PATIENT</span>
+            <strong className="dashboard-next-token">
+              #{firstWaiting.token_number}
+            </strong>
+            <span>
+              Joined at {formatTime(firstWaiting.joined_at)}
+            </span>
+          </div>
+
+          <button
+            className="primary-action start-action"
+            type="button"
+            disabled={
+              Boolean(actionLoading) || queue.queue_paused
+            }
+            onClick={() =>
+              handleStartConsultation(
+                firstWaiting.token_id,
+                firstWaiting.token_number
+              )
+            }
+          >
+            {actionLoading === 'start'
+              ? 'Starting...'
+              : 'Start consultation'}
+          </button>
+        </div>
+
+        {queue.queue_paused && (
+          <p className="inline-warning">
+            Resume the queue before starting a consultation.
+          </p>
+        )}
+      </>
+    ) : (
+      <p>
+        No patients are waiting. New patients will appear here.
+      </p>
+    )}
+  </div>
+)}
+
                 </article>
 
                 <article className="panel queue-control-panel">
@@ -1004,7 +1068,15 @@ function handleDismissRegistration() {
                   </div>
                 </article>
               </section>
-
+                </>
+)}
+              {activeTab === 'queue' && (
+  <>
+    <div className="tab-page-heading">
+      <span className="panel-eyebrow">LIVE QUEUE MANAGEMENT</span>
+      <h2>Patient queue</h2>
+      <p>Manage waiting patients and control consultation order.</p>
+    </div>
               <section className="panel next-patient-panel">
                 <div className="panel-heading">
                   <div>
@@ -1190,6 +1262,86 @@ onClick={() =>
                   </p>
                 )}
               </section>
+               </>
+)}
+              
+{activeTab === 'consultations' && (
+  <section className="consultations-page">
+    <div className="tab-page-heading">
+      <span className="panel-eyebrow">CLINIC RECORDS</span>
+      <h2>Consultations</h2>
+      <p>Review completed consultations recorded in today's queue.</p>
+    </div>
+
+    <div className="consultation-summary-card">
+      <div>
+        <span>Completed today</span>
+        <strong>
+          {tokens.filter(token => token.status === 'COMPLETED').length}
+        </strong>
+      </div>
+      <div>
+        <span>Currently consulting</span>
+        <strong>{activeTokenId ? `#${activeTokenNumber}` : 'None'}</strong>
+      </div>
+    </div>
+
+    <section className="panel consultation-history-panel">
+      <div className="panel-heading">
+        <div>
+          <span className="panel-eyebrow">DAILY HISTORY</span>
+          <h3>Completed consultations</h3>
+        </div>
+        <span className="token-total">
+          {tokens.filter(token => token.status === 'COMPLETED').length} records
+        </span>
+      </div>
+
+      <div className="token-table-wrapper">
+        <table className="token-table">
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>Token</th>
+              <th>Joined</th>
+              <th>Outcome</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {tokens
+              .filter(token => token.status === 'COMPLETED')
+              .map(token => (
+                <tr key={token.token_id}>
+                  <td>
+                    <strong>{token.patient_name || 'Unknown'}</strong>
+                  </td>
+                  <td>
+                    <strong className="table-token">
+                      #{token.token_number}
+                    </strong>
+                  </td>
+                  <td>{formatTime(token.joined_at)}</td>
+                  <td>
+                    <span className="token-status completed">
+                      Completed
+                    </span>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+
+      {tokens.filter(token => token.status === 'COMPLETED').length === 0 && (
+        <div className="consultations-empty">
+          <strong>No completed consultations yet</strong>
+          <p>Completed patient visits will appear here.</p>
+        </div>
+      )}
+    </section>
+  </section>
+)}
 
               <footer className="dashboard-footer">
                 ClinicQ · Queue Prediction & Crowd Management
