@@ -227,6 +227,63 @@ async function performAction(key, path, successMessage) {
   }
 }
 
+async function handleCancelAllWaiting() {
+  const tokensToCancel = [...waitingTokens]
+
+  if (tokensToCancel.length === 0 || actionInFlightRef.current) {
+    return
+  }
+
+  const confirmed = window.confirm(
+    `Are you sure you want to cancel all ${tokensToCancel.length} waiting patients? The active consultation and completed records will not be affected.`
+  )
+
+  if (!confirmed) return
+
+  actionInFlightRef.current = true
+  setActionLoading('cancel-all')
+  setQueueError('')
+  setNotice('')
+  setStartWarning('')
+
+  let cancelledCount = 0
+  const failedTokens = []
+
+  try {
+    // Cancel tokens one at a time to avoid sending simultaneous requests.
+    for (const token of tokensToCancel) {
+      try {
+        await apiRequest(
+          `/api/staff/tokens/${token.token_id}/cancel`,
+          { method: 'POST' }
+        )
+
+        cancelledCount += 1
+      } catch (error) {
+        failedTokens.push(`#${token.token_number}`)
+      }
+    }
+
+    await refreshQueue({ silent: true })
+
+    if (failedTokens.length > 0) {
+      setNotice(`${cancelledCount} waiting patient(s) cancelled.`)
+      setQueueError(
+        `Could not cancel these tokens: ${failedTokens.join(', ')}. Please review the queue.`
+      )
+    } else {
+      setNotice(
+        `Successfully cancelled all ${cancelledCount} waiting patient(s).`
+      )
+    }
+  } catch (error) {
+    setQueueError(error.message || 'Unable to cancel waiting patients.')
+  } finally {
+    actionInFlightRef.current = false
+    setActionLoading('')
+  }
+}
+
 function handleStartConsultation(tokenId, tokenNumber) {
   // An active consultation already exists.
   if (activeTokenId) {
@@ -670,23 +727,60 @@ function handleDismissRegistration() {
 
 
 <section className="panel registration-panel">
-  <div className="registration-launcher">
-    <div className="registration-launcher-copy">
-      <span className="panel-eyebrow">PATIENT REGISTRATION</span>
-      <h3>Register a new patient</h3>
-      <p>
-        Add a patient to the queue and generate their private access code.
-      </p>
-    </div>
+  
+
+<div className="registration-launcher">
+  <div className="registration-launcher-copy">
+    <span className="panel-eyebrow">PATIENT REGISTRATION</span>
+
+    <h3>Register a new patient</h3>
+
+    <p>
+      Add a patient to the queue and generate their private access code.
+    </p>
+  </div>
+
+  <div className="registration-launcher-actions">
+    {registration && (
+      <button
+        type="button"
+        className="registration-cancel"
+        onClick={() => setShowRegistrationForm(true)}
+      >
+        View access code
+      </button>
+    )}
 
     <button
       className="register-action"
       type="button"
-      onClick={() => setShowRegistrationForm(true)}
+      onClick={() => {
+        if (
+          registration &&
+          !window.confirm(
+            'Have you saved the previous patient access code? It cannot be retrieved later. Continue?'
+          )
+        ) {
+          return
+        }
+
+        setRegistration(null)
+        setRegistrationError('')
+        setCodeCopied(false)
+        setPatientName('')
+        setPatientAge('')
+        setPatientSex('')
+        setPatientMobile('')
+        setVisitReason('General check-up')
+        setShowRegistrationForm(true)
+      }}
     >
-      {registration ? 'View access code' : '+ Register patient'}
+      + Register patient
     </button>
   </div>
+</div>
+
+
 </section>
 
 {showRegistrationForm && (
@@ -790,8 +884,6 @@ function handleDismissRegistration() {
               >
                 <option value="General check-up">General check-up</option>
                 <option value="Follow-up check-up">Follow-up check-up</option>
-                <option value="Fever">Fever</option>
-                <option value="Cold">Cold</option>
                 <option value="Other">Other</option>
               </select>
             </label>
@@ -1147,9 +1239,25 @@ onClick={() =>
                     <h3>Today's patient queue</h3>
                   </div>
 
-                  <span className="token-total">
-                    {tokens.length} records
-                  </span>
+                  <div className="queue-header-actions">
+  <span className="token-total">
+    {tokens.length} records
+  </span>
+
+  <button
+    type="button"
+    className="cancel-all-action"
+    disabled={
+      waitingTokens.length === 0 ||
+      Boolean(actionLoading)
+    }
+    onClick={handleCancelAllWaiting}
+  >
+    {actionLoading === 'cancel-all'
+      ? 'Cancelling...'
+      : `Cancel all waiting (${waitingTokens.length})`}
+  </button>
+</div>
                 </div>
 
                 <div className="token-table-wrapper">
