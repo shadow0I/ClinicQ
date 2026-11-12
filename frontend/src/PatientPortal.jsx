@@ -209,7 +209,10 @@ useEffect(() => {
 
   // The browser automatically sends the same-origin
   // HTTP-only patient session cookie.
-  const eventSource = new EventSource('/api/patient/events')
+  const eventSource = new EventSource(
+  `${API_BASE_URL}/api/patient/events`,
+  { withCredentials: true }
+)
 
   eventSource.addEventListener('connected', () => {
     setLiveStatus('connected')
