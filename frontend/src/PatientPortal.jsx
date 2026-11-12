@@ -290,20 +290,18 @@ useEffect(() => {
 
   if (!patient) {
     return (
-      <main className="patient-page">
-        <header className="patient-header">
-          <a href="/" className="patient-brand">
-            <span className="patient-brand-mark">C</span>
-            <span>ClinicQ</span>
-          </a>
-
-          <span className="portal-label">PATIENT PORTAL</span>
-        </header>
+      <main className="patient-page patient-login-page">
+        
 
         <section className="patient-login-layout">
           <div className="patient-welcome">
-            <p className="patient-eyebrow">YOUR CLINIC, CONNECTED</p>
 
+  <a href="/" className="patient-login-brand">
+    <span className="patient-brand-mark">C</span>
+    <span>ClinicQ</span>
+  </a>
+
+  <p className="patient-eyebrow">PATIENT MANAGEMENT PORTAL</p>
             <h1>
               Your time matters.
               <br />
@@ -441,13 +439,14 @@ useEffect(() => {
               Your private access code is verified securely. Never
               share it with anyone other than authorised clinic staff.
             </p>
+            <div className="patient-login-footer">
+  <span>© 2026 ClinicQ. Patient access only.</span>
+  <a href="/">Staff portal →</a>
+</div>
           </div>
         </section>
 
-        <footer className="patient-footer">
-          ClinicQ · Queue Prediction & Crowd Management
-          <a href="/">Staff portal</a>
-        </footer>
+        
       </main>
     )
   }

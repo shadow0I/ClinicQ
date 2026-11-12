@@ -1875,3 +1875,179 @@
     width: 100%;
   }
 }
+.portal-switch-link {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 22px;
+  font-size: 14px;
+  color: #87968e;
+}
+
+.portal-switch-link a {
+  color: #176d52;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.portal-switch-link a:hover {
+  color: #0d4938;
+  text-decoration: underline;
+}
+
+/* Patient portal — split-colour sign-in design */
+
+.patient-page {
+  min-height: 100vh;
+  background: #f4f7f5;
+}
+
+/* Two-column login layout */
+
+.patient-login-layout {
+  width: 100%;
+  max-width: none;
+  min-height: calc(100vh - 85px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+}
+
+/* Dark green welcome panel */
+
+.patient-welcome {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(40px, 6vw, 90px);
+  background: linear-gradient(
+    145deg,
+    #12483e 0%,
+    #0b352f 55%,
+    #082c27 100%
+  );
+  color: #ffffff;
+  border-radius: 0;
+}
+
+.patient-welcome .patient-eyebrow {
+  color: #9be3c8;
+  letter-spacing: 2px;
+}
+
+.patient-welcome h1 {
+  color: #ffffff;
+  font-size: clamp(36px, 4vw, 58px);
+  line-height: 1.15;
+  letter-spacing: -1.5px;
+  margin: 18px 0;
+}
+
+.patient-welcome > p:not(.patient-eyebrow) {
+  max-width: 480px;
+  color: #d1e5dc;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.patient-feature {
+  margin-top: 22px;
+}
+
+.patient-feature strong {
+  color: #ffffff;
+}
+
+.patient-feature p {
+  color: #b9d9cc;
+}
+
+.patient-feature > span {
+  border-color: rgba(155, 227, 200, 0.35);
+  background: rgba(255, 255, 255, 0.04);
+  color: #9be3c8;
+}
+
+/* White patient sign-in panel */
+
+.patient-form-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-self: stretch;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  padding: clamp(35px, 6vw, 90px);
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.patient-form-card h2 {
+  color: #143d32;
+}
+
+.patient-form-card .patient-eyebrow {
+  color: #31856a;
+}
+
+.patient-form-description {
+  color: #87968e;
+}
+
+/* Patient footer */
+
+.patient-footer {
+  background: #ffffff;
+  border-top: 1px solid #e3ebe6;
+}
+
+/* Tablet and mobile */
+
+@media (max-width: 850px) {
+  .patient-login-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-welcome {
+    padding: 45px 35px;
+  }
+
+  .patient-welcome h1 {
+    font-size: 39px;
+  }
+
+  .patient-form-card {
+    padding: 45px 35px;
+  }
+}
+
+@media (max-width: 550px) {
+  .patient-welcome {
+    padding: 36px 24px;
+  }
+
+  .patient-welcome h1 {
+    font-size: 34px;
+  }
+
+  .patient-welcome > p:not(.patient-eyebrow) {
+    font-size: 14px;
+  }
+
+  .patient-feature {
+    margin-top: 16px;
+  }
+
+  .patient-form-card {
+    padding: 35px 24px;
+  }
+}

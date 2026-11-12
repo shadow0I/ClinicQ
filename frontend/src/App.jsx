@@ -518,6 +518,13 @@ function handleDismissRegistration() {
             <p className="security-note">
               Your staff session is protected by secure authentication.
             </p>
+            
+            <div className="portal-switch-link">
+  <span>Are you a patient?</span>
+  <a href="/patient">
+    Open Patient Portal →
+  </a>
+</div>
           </div>
 
           <p className="form-footer">
