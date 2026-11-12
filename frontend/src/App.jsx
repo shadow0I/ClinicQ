@@ -91,6 +91,15 @@ function App() {
   const [patientSex, setPatientSex] = useState('')
   const [patientMobile, setPatientMobile] = useState('')
   const [visitReason, setVisitReason] = useState('General check-up')
+  // Emergency management
+const [emergencyDelay, setEmergencyDelay] = useState('15')
+const [emergencyMessage, setEmergencyMessage] = useState(
+  'An emergency has interrupted the queue. Waiting-time estimates have been updated.'
+)
+
+// Custom public message management
+const [customDelay, setCustomDelay] = useState('0')
+const [customMessage, setCustomMessage] = useState('')
 
 
   // Restore an existing staff session after a page refresh.
@@ -137,7 +146,29 @@ function App() {
 
     try {
       const data = await apiRequest('/api/staff/queue')
-      setQueue(data)
+
+setQueue(data)
+
+// Restore existing active emergency details.
+const disruptions = data.active_disruptions || []
+
+const emergency = disruptions.find(
+  item => item.event_type === 'EMERGENCY'
+)
+
+const custom = disruptions.find(
+  item => item.event_type === 'CUSTOM_MESSAGE'
+)
+
+if (emergency) {
+  setEmergencyDelay(String(emergency.expected_delay_minutes))
+  setEmergencyMessage(emergency.public_message)
+}
+
+if (custom) {
+  setCustomDelay(String(custom.expected_delay_minutes))
+  setCustomMessage(custom.public_message)
+}
     } catch (error) {
       setQueueError(error.message || 'Unable to load the clinic queue.')
     } finally {
@@ -145,12 +176,46 @@ function App() {
     }
   }, [])
 
-  // Load the queue whenever an authenticated staff session becomes active.
-  useEffect(() => {
-    if (currentUser) {
+  const activeDisruptions = queue?.active_disruptions || []
+
+const activeEmergency = activeDisruptions.find(
+  item => item.event_type === 'EMERGENCY'
+)
+
+const activeCustomMessage = activeDisruptions.find(
+  item => item.event_type === 'CUSTOM_MESSAGE'
+)
+
+useEffect(() => {
+}, [
+  activeEmergency?.id,
+  activeEmergency?.expected_delay_minutes,
+  activeEmergency?.public_message
+])
+
+useEffect(() => {
+}, [
+  activeCustomMessage?.id,
+  activeCustomMessage?.expected_delay_minutes,
+  activeCustomMessage?.public_message
+])
+
+  // Load the queue after the authenticated session becomes active.
+useEffect(() => {
+  if (!currentUser) return
+
+  let active = true
+
+  Promise.resolve().then(() => {
+    if (active) {
       refreshQueue()
     }
-  }, [currentUser, refreshQueue])
+  })
+
+  return () => {
+    active = false
+  }
+}, [currentUser, refreshQueue])
 
   async function handleLogin(event) {
     event.preventDefault()
@@ -227,6 +292,90 @@ async function performAction(key, path, successMessage) {
   }
 }
 
+async function saveDisruption(event, type) {
+  event.preventDefault()
+
+  if (actionInFlightRef.current) return
+
+  const isEmergency = type === 'emergency'
+
+  const delay = Number(
+    isEmergency ? emergencyDelay : customDelay
+  )
+
+  const message = (
+    isEmergency ? emergencyMessage : customMessage
+  ).trim()
+
+  const minimumDelay = isEmergency ? 1 : 0
+
+  if (
+    !Number.isInteger(delay) ||
+    delay < minimumDelay ||
+    delay > 240
+  ) {
+    setQueueError(
+      isEmergency
+        ? 'Emergency delay must be between 1 and 240 minutes.'
+        : 'Custom message delay must be between 0 and 240 minutes.'
+    )
+    return
+  }
+
+  if (!message || message.length > 240) {
+    setQueueError('Message must contain 1–240 characters.')
+    return
+  }
+
+  actionInFlightRef.current = true
+
+  setActionLoading(isEmergency ? 'emergency' : 'custom-message')
+  setQueueError('')
+  setNotice('')
+
+  try {
+    const endpoint = isEmergency
+      ? '/api/staff/disruptions/emergency'
+      : '/api/staff/disruptions/message'
+
+    const data = await apiRequest(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({
+        expected_delay_minutes: delay,
+        public_message: message
+      })
+    })
+
+    setNotice(
+      data.message || 'Disruption updated successfully.'
+    )
+
+    await refreshQueue({ silent: true })
+
+  } catch (error) {
+    setQueueError(
+      error.message || 'Unable to update the disruption.'
+    )
+  } finally {
+    actionInFlightRef.current = false
+    setActionLoading('')
+  }
+}
+
+async function handleResolveDisruption(disruption) {
+  const confirmed = window.confirm(
+    `Resolve this ${disruption.event_type === 'EMERGENCY' ? 'emergency' : 'custom message'}?`
+  )
+
+  if (!confirmed) return
+
+  await performAction(
+    `resolve-${disruption.id}`,
+    `/api/staff/disruptions/${disruption.id}/resolve`,
+    'Disruption resolved successfully.'
+  )
+}
+
 async function handleCancelAllWaiting() {
   const tokensToCancel = [...waitingTokens]
 
@@ -259,7 +408,7 @@ async function handleCancelAllWaiting() {
         )
 
         cancelledCount += 1
-      } catch (error) {
+      } catch  {
         failedTokens.push(`#${token.token_number}`)
       }
     }
@@ -357,13 +506,6 @@ async function handleCopyAccessCode() {
     )
   }
 }
-
-function handleDismissRegistration() {
-  setRegistration(null)
-  setCodeCopied(false)
-  setRegistrationError('')
-}
-
 
   if (authChecking) {
     return (
@@ -518,7 +660,7 @@ function handleDismissRegistration() {
             <p className="security-note">
               Your staff session is protected by secure authentication.
             </p>
-            
+
             <div className="portal-switch-link">
   <span>Are you a patient?</span>
   <a href="/patient">
@@ -577,7 +719,7 @@ function handleDismissRegistration() {
 
         <div className="sidebar-label">WORKSPACE</div>
 
-        
+
 <nav className="sidebar-nav">
   <button
     type="button"
@@ -734,7 +876,7 @@ function handleDismissRegistration() {
 
 
 <section className="panel registration-panel">
-  
+
 
 <div className="registration-launcher">
   <div className="registration-launcher-copy">
@@ -997,7 +1139,7 @@ function handleDismissRegistration() {
       )}
     </section>
   </div>
-)}    
+)}
 
 
               <section className="dashboard-action-grid">
@@ -1054,7 +1196,7 @@ function handleDismissRegistration() {
                           : '✓ Complete consultation'}
                       </button>
                     </>
-                  
+
 ) : (
   <div className="empty-consultation">
     <div className="empty-icon">◯</div>
@@ -1149,7 +1291,12 @@ function handleDismissRegistration() {
                     >
                       {actionLoading === 'pause'
                         ? 'Processing...'
-                        : 'Ⅱ Pause queue'}
+                        : (
+  <>
+    <span className="pause-symbol" aria-hidden="true" />
+    Pause queue
+  </>
+)}
                     </button>
                   )}
 
@@ -1166,6 +1313,200 @@ function handleDismissRegistration() {
                       : 'Queue is accepting consultations'}
                   </div>
                 </article>
+              </section>
+                            {/* EMERGENCY AND CLINIC UPDATES */}
+              <section className="dashboard-disruption-grid">
+
+                {/* EMERGENCY PANEL */}
+                <article className="panel disruption-panel emergency-panel">
+
+                  <span className="panel-eyebrow">
+                    URGENT CLINIC UPDATE
+                  </span>
+
+                  <h3>Emergency alert</h3>
+
+                  <p className="control-description">
+                    Inform patients when an emergency interrupts
+                    normal clinic operations.
+                  </p>
+
+                  {activeEmergency && (
+                    <div className="active-disruption-summary emergency-active">
+                      <strong>
+                        Emergency active · {activeEmergency.expected_delay_minutes} min delay
+                      </strong>
+
+                      <p>{activeEmergency.public_message}</p>
+
+                      <button
+                        type="button"
+                        className="resolve-disruption-button"
+                        disabled={Boolean(actionLoading)}
+                        onClick={() =>
+                          handleResolveDisruption(activeEmergency)
+                        }
+                      >
+                        Resolve emergency
+                      </button>
+                    </div>
+                  )}
+
+                  <form
+                    className="disruption-form"
+                    onSubmit={(event) =>
+                      saveDisruption(event, 'emergency')
+                    }
+                  >
+                    <label>
+                      Expected delay (minutes)
+
+                      <input
+                        type="number"
+                        min="1"
+                        max="240"
+                        required
+                        value={emergencyDelay}
+                        onChange={(event) =>
+                          setEmergencyDelay(event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      Emergency message
+
+                      <input
+                        type="text"
+                        list="emergency-message-options"
+                        maxLength="240"
+                        required
+                        value={emergencyMessage}
+                        onChange={(event) =>
+                          setEmergencyMessage(event.target.value)
+                        }
+                        placeholder="Enter an emergency message"
+                      />
+
+                      <datalist id="emergency-message-options">
+                        <option value="The doctor is attending an emergency patient." />
+                        <option value="An urgent medical procedure is in progress." />
+                        <option value="The clinic is experiencing an emergency delay." />
+                      </datalist>
+                    </label>
+
+                    <button
+                      type="submit"
+                      className="emergency-action-button"
+                      disabled={Boolean(actionLoading)}
+                    >
+                      {actionLoading === 'emergency'
+                        ? 'Saving...'
+                        : activeEmergency
+                          ? 'Update emergency'
+                          : 'Activate emergency'}
+                    </button>
+                  </form>
+                </article>
+
+
+                {/* CUSTOM MESSAGE PANEL */}
+                <article className="panel disruption-panel custom-message-panel">
+
+                  <span className="panel-eyebrow">
+                    PATIENT COMMUNICATION
+                  </span>
+
+                  <h3>Custom clinic message</h3>
+
+                  <p className="control-description">
+                    Share information about temporary delays or
+                    other clinic updates with patients.
+                  </p>
+
+                  {activeCustomMessage && (
+                    <div className="active-disruption-summary custom-active">
+                      <strong>Custom message active</strong>
+
+                      <p>{activeCustomMessage.public_message}</p>
+
+                      {activeCustomMessage.expected_delay_minutes > 0 && (
+                        <span>
+                          Additional delay: {activeCustomMessage.expected_delay_minutes} minutes
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        className="resolve-disruption-button"
+                        disabled={Boolean(actionLoading)}
+                        onClick={() =>
+                          handleResolveDisruption(activeCustomMessage)
+                        }
+                      >
+                        Remove message
+                      </button>
+                    </div>
+                  )}
+
+                  <form
+                    className="disruption-form"
+                    onSubmit={(event) =>
+                      saveDisruption(event, 'custom-message')
+                    }
+                  >
+                    <label>
+                      Additional delay (minutes)
+
+                      <input
+                        type="number"
+                        min="0"
+                        max="240"
+                        required
+                        value={customDelay}
+                        onChange={(event) =>
+                          setCustomDelay(event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      Public message
+
+                      <input
+                        type="text"
+                        list="custom-message-options"
+                        maxLength="240"
+                        required
+                        value={customMessage}
+                        onChange={(event) =>
+                          setCustomMessage(event.target.value)
+                        }
+                        placeholder="Enter a message for patients"
+                      />
+
+                      <datalist id="custom-message-options">
+                        <option value="The doctor is running behind schedule." />
+                        <option value="The doctor is temporarily unavailable." />
+                        <option value="Please wait for the next queue update." />
+                        <option value="The clinic is experiencing a temporary delay." />
+                      </datalist>
+                    </label>
+
+                    <button
+                      type="submit"
+                      className="custom-message-action-button"
+                      disabled={Boolean(actionLoading)}
+                    >
+                      {actionLoading === 'custom-message'
+                        ? 'Saving...'
+                        : activeCustomMessage
+                          ? 'Update message'
+                          : 'Publish message'}
+                    </button>
+                  </form>
+                </article>
+
               </section>
                 </>
 )}
@@ -1239,6 +1580,7 @@ onClick={() =>
 )}
               </section>
 
+
               <section className="panel token-list-panel">
                 <div className="panel-heading">
                   <div>
@@ -1278,96 +1620,237 @@ onClick={() =>
                       </tr>
                     </thead>
 
-                    <tbody>
-                      {tokens.map((token) => {
-                        const isWaiting = token.status === 'WAITING'
-                        const isFirstWaiting =
-                          firstWaiting?.token_id === token.token_id
 
-                        return (
-                          <tr key={token.token_id}>
-                            <td>
-                              <div>
-  <strong className="table-token">
-    #{token.token_number}
-  </strong>
 
-  <div className="table-patient-name">
-    {token.patient_name || "Unknown"}
-  </div>
-</div>
-                            </td>
+<tbody>
+  {/* Alerts without an anchor appear before the first token. */}
+  {activeDisruptions
+    .filter((disruption) =>
+      !disruption.after_token_id ||
+      !tokens.some(
+        (token) => token.token_id === disruption.after_token_id
+      )
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.started_at).getTime() -
+        new Date(b.started_at).getTime()
+    )
+    .map((disruption) => {
+      const isEmergency =
+        disruption.event_type === 'EMERGENCY'
 
-                            <td>{formatTime(token.joined_at)}</td>
+      return (
+        <tr
+          key={`disruption-${disruption.id}`}
+          className="queue-disruption-row"
+        >
+          <td colSpan={4}>
+            <div
+              className={`queue-inline-alert ${
+                isEmergency ? 'emergency' : 'custom'
+              }`}
+            >
+              <div className="queue-inline-alert-content">
+                <strong>
+                  {isEmergency
+                    ? 'EMERGENCY INTERRUPTION'
+                    : 'CLINIC MESSAGE'}
+                </strong>
 
-                            <td>
-                              <span
-                                className={`token-status ${token.status.toLowerCase()}`}
-                              >
-                                {getStatusLabel(token.status)}
-                              </span>
-                            </td>
+                <p>{disruption.public_message}</p>
 
-                            <td>
-                              {isWaiting ? (
-                                <div className="row-actions">
-                                  {isFirstWaiting && (
-                                    <button
-                                      type="button"
-                                      className="small-action start-small"
-                                     disabled={
-  Boolean(actionLoading) ||
-  queue.queue_paused
-}
-onClick={() =>
-  handleStartConsultation(
-    token.token_id,
-    token.token_number
-  )
-}
-                                    >
-                                      Start
-                                    </button>
-                                  )}
+                <span>
+                  {disruption.expected_delay_minutes > 0
+                    ? `Additional delay: ${disruption.expected_delay_minutes} minutes`
+                    : 'No additional waiting-time delay'}
+                </span>
 
-                                  <button
-                                    type="button"
-                                    className="small-action skip-small"
-                                    disabled={Boolean(actionLoading)}
-                                    onClick={() =>
-                                      performAction(
-                                        `skip-${token.token_id}`,
-                                        `/api/staff/tokens/${token.token_id}/skip`,
-                                        `Token #${token.token_number} skipped.`
-                                      )
-                                    }
-                                  >
-                                    Skip
-                                  </button>
+                <small>
+                  Announced at {formatTime(disruption.started_at)}
+                </small>
+              </div>
 
-                                  <button
-                                    type="button"
-                                    className="small-action cancel-small"
-                                    disabled={Boolean(actionLoading)}
-                                    onClick={() =>
-                                      performAction(
-                                        `cancel-${token.token_id}`,
-                                        `/api/staff/tokens/${token.token_id}/cancel`,
-                                        `Token #${token.token_number} cancelled.`
-                                      )
-                                    }
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="no-action">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
+              <button
+                type="button"
+                className="queue-inline-resolve"
+                disabled={Boolean(actionLoading)}
+                onClick={() =>
+                  handleResolveDisruption(disruption)
+                }
+              >
+                {actionLoading === `resolve-${disruption.id}`
+                  ? 'Resolving...'
+                  : isEmergency
+                    ? 'Resolve emergency'
+                    : 'Remove message'}
+              </button>
+            </div>
+          </td>
+        </tr>
+      )
+    })}
+
+  {/* Render each token, followed by its associated alerts. */}
+  {tokens.flatMap((token) => {
+    const isWaiting = token.status === 'WAITING'
+
+    const isFirstWaiting =
+      firstWaiting?.token_id === token.token_id
+
+    const tokenRow = (
+      <tr key={`token-${token.token_id}`}>
+        <td>
+          <div>
+            <strong className="table-token">
+              #{token.token_number}
+            </strong>
+
+            <div className="table-patient-name">
+              {token.patient_name || 'Unknown'}
+            </div>
+          </div>
+        </td>
+
+        <td>{formatTime(token.joined_at)}</td>
+
+        <td>
+          <span
+            className={`token-status ${token.status.toLowerCase()}`}
+          >
+            {getStatusLabel(token.status)}
+          </span>
+        </td>
+
+        <td>
+          {isWaiting ? (
+            <div className="row-actions">
+              {isFirstWaiting && (
+                <button
+                  type="button"
+                  className="small-action start-small"
+                  disabled={
+                    Boolean(actionLoading) ||
+                    queue.queue_paused
+                  }
+                  onClick={() =>
+                    handleStartConsultation(
+                      token.token_id,
+                      token.token_number
+                    )
+                  }
+                >
+                  Start
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="small-action skip-small"
+                disabled={Boolean(actionLoading)}
+                onClick={() =>
+                  performAction(
+                    `skip-${token.token_id}`,
+                    `/api/staff/tokens/${token.token_id}/skip`,
+                    `Token #${token.token_number} skipped.`
+                  )
+                }
+              >
+                Skip
+              </button>
+
+              <button
+                type="button"
+                className="small-action cancel-small"
+                disabled={Boolean(actionLoading)}
+                onClick={() =>
+                  performAction(
+                    `cancel-${token.token_id}`,
+                    `/api/staff/tokens/${token.token_id}/cancel`,
+                    `Token #${token.token_number} cancelled.`
+                  )
+                }
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <span className="no-action">—</span>
+          )}
+        </td>
+      </tr>
+    )
+
+    const tokenDisruptions = activeDisruptions
+      .filter(
+        (disruption) =>
+          disruption.after_token_id === token.token_id
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.started_at).getTime() -
+          new Date(b.started_at).getTime()
+      )
+      .map((disruption) => {
+        const isEmergency =
+          disruption.event_type === 'EMERGENCY'
+
+        return (
+          <tr
+            key={`disruption-${disruption.id}`}
+            className="queue-disruption-row"
+          >
+            <td colSpan={4}>
+              <div
+                className={`queue-inline-alert ${
+                  isEmergency ? 'emergency' : 'custom'
+                }`}
+              >
+                <div className="queue-inline-alert-content">
+                  <strong>
+                    {isEmergency
+                      ? 'EMERGENCY INTERRUPTION'
+                      : 'CLINIC MESSAGE'}
+                  </strong>
+
+                  <p>{disruption.public_message}</p>
+
+                  <span>
+                    {disruption.expected_delay_minutes > 0
+                      ? `Additional delay: ${disruption.expected_delay_minutes} minutes`
+                      : 'No additional waiting-time delay'}
+                  </span>
+
+                  <small>
+                    Announced at {formatTime(disruption.started_at)}
+                  </small>
+                </div>
+
+                <button
+                  type="button"
+                  className="queue-inline-resolve"
+                  disabled={Boolean(actionLoading)}
+                  onClick={() =>
+                    handleResolveDisruption(disruption)
+                  }
+                >
+                  {actionLoading === `resolve-${disruption.id}`
+                    ? 'Resolving...'
+                    : isEmergency
+                      ? 'Resolve emergency'
+                      : 'Remove message'}
+                </button>
+              </div>
+            </td>
+          </tr>
+        )
+      })
+
+    return [tokenRow, ...tokenDisruptions]
+  })}
+</tbody>
+
+
                   </table>
                 </div>
 
@@ -1379,7 +1862,7 @@ onClick={() =>
               </section>
                </>
 )}
-              
+
 {activeTab === 'consultations' && (
   <section className="consultations-page">
     <div className="tab-page-heading">

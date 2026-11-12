@@ -879,3 +879,48 @@
     flex-direction: column;
   }
 }
+
+/* Patient-facing disruption alerts */
+
+.patient-disruption-alert {
+  margin: 18px 0;
+  padding: 18px 20px;
+  border-radius: 12px;
+  border-left: 5px solid;
+}
+
+.patient-disruption-alert.emergency {
+  background: #fef2f2;
+  border-color: #dc2626;
+  color: #991b1b;
+}
+
+.patient-disruption-alert.custom {
+  background: #fffbeb;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
+.patient-disruption-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.patient-disruption-heading strong {
+  font-size: 14px;
+  letter-spacing: 0.5px;
+}
+
+.patient-disruption-heading span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.patient-disruption-alert p {
+  margin: 9px 0 0;
+  line-height: 1.6;
+  font-size: 14px;
+}

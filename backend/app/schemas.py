@@ -46,8 +46,8 @@ class StaffTokenCreate(BaseModel):
         pattern=r"^[6-9]\d{9}$"
     )
     visit_reason: str = Field(
-        pattern=r"^(General check-up|Follow-up check-up|Fever|Cold / cough|Other)$"
-    )
+    pattern=r"^(General check-up|Follow-up check-up|Other)$"
+)
 
 class PatientQRAccessRequest(BaseModel):
     qr_token: str = Field(min_length=32, max_length=128)

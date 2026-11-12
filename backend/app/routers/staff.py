@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
 
 from app.queue_recovery import recover_stale_consultations
 from app.db import get_db
@@ -15,6 +16,19 @@ from app.security import (
     create_patient_qr_token,
     hash_patient_qr_token,
 )
+
+class EmergencyPayload(BaseModel):
+    expected_delay_minutes: int = Field(ge=1, le=240)
+    public_message: str = Field(
+        default="An emergency has interrupted the queue. Waiting times have been updated.",
+        min_length=1,
+        max_length=240
+    )
+
+
+class CustomMessagePayload(BaseModel):
+    public_message: str = Field(min_length=1, max_length=240)
+    expected_delay_minutes: int = Field(default=0, ge=0, le=240)
 
 router = APIRouter(
     prefix="/api/staff",
@@ -351,6 +365,26 @@ def get_staff_queue(
             for row in rows
         ]
 
+        # Fetch active emergencies and public clinic messages.
+        active_disruptions = db.execute(
+            text("""
+                SELECT
+                    id::text AS id,
+                    after_token_id::text AS after_token_id,
+                    event_type,
+                    expected_delay_minutes,
+                    public_message,
+                    started_at
+                FROM public.queue_disruptions
+                WHERE clinic_id = :clinic_id
+                  AND status = 'ACTIVE'
+                ORDER BY started_at DESC
+            """),
+            {
+                "clinic_id": clinic["id"]
+            }
+        ).mappings().all()
+
         current = next(
             (
                 token for token in tokens
@@ -365,17 +399,19 @@ def get_staff_queue(
         )
 
         return {
-            "clinic_name": clinic["name"],
-            "clinic_code": clinic["clinic_code"],
-            "doctor_name": doctor["display_name"],
-            "queue_date": str(token_date),
-            "queue_paused": clinic["queue_paused"],
-            "current_consultation": current,
-            "waiting_count": waiting_count,
-            "total_tokens_today": len(tokens),
-            "tokens": tokens
-        }
-
+    "clinic_name": clinic["name"],
+    "clinic_code": clinic["clinic_code"],
+    "doctor_name": doctor["display_name"],
+    "queue_date": str(token_date),
+    "queue_paused": clinic["queue_paused"],
+    "current_consultation": current,
+    "waiting_count": waiting_count,
+    "total_tokens_today": len(tokens),
+    "tokens": tokens,
+    "active_disruptions": [
+        dict(row) for row in active_disruptions
+    ]
+}
     except HTTPException:
         raise
 
@@ -430,13 +466,30 @@ def _get_token_for_update(db, clinic_id, token_id):
         }
     ).mappings().one_or_none()
 
+def _get_active_queue_token_id(db, clinic_id):
+    """Return the token currently in consultation for this clinic."""
+
+    return db.execute(
+        text("""
+            SELECT token_id
+            FROM public.consultations
+            WHERE clinic_id = :clinic_id
+              AND ended_at IS NULL
+            ORDER BY started_at DESC
+            LIMIT 1
+        """),
+        {
+            "clinic_id": clinic_id
+        }
+    ).scalar_one_or_none()
 
 def _record_queue_event(
     db,
     clinic_id,
     staff_user_id,
     event_type,
-    token_id=None
+    token_id=None,
+    public_message=None
 ):
     """Save an auditable record of a queue operation."""
 
@@ -446,22 +499,418 @@ def _record_queue_event(
                 clinic_id,
                 token_id,
                 event_type,
-                staff_user_id
+                staff_user_id,
+                public_message
             )
             VALUES (
                 :clinic_id,
                 :token_id,
                 :event_type,
-                :staff_user_id
+                :staff_user_id,
+                :public_message
             )
         """),
         {
             "clinic_id": clinic_id,
             "token_id": token_id,
             "event_type": event_type,
-            "staff_user_id": staff_user_id
+            "staff_user_id": staff_user_id,
+            "public_message": public_message
         }
     )
+
+# ==========================================
+# EMERGENCY AND CUSTOM MESSAGE MANAGEMENT
+# ==========================================
+
+@router.post("/disruptions/emergency")
+def create_or_update_emergency(
+    payload: EmergencyPayload,
+    staff=Depends(get_current_staff),
+    db: Session = Depends(get_db)
+):
+    verify_staff_role(staff)
+
+    try:
+        clinic = _get_clinic_for_update(
+            db,
+            staff["clinic_id"]
+        )
+
+        if clinic is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Clinic not found."
+            )
+
+        # Find the existing active emergency.
+        existing = db.execute(
+            text("""
+                SELECT id
+                FROM public.queue_disruptions
+                WHERE clinic_id = :clinic_id
+                  AND event_type = 'EMERGENCY'
+                  AND status = 'ACTIVE'
+                ORDER BY started_at DESC
+                LIMIT 1
+                FOR UPDATE
+            """),
+            {
+                "clinic_id": staff["clinic_id"]
+            }
+        ).mappings().one_or_none()
+
+        if existing:
+            # Update the existing record.
+            # The previous delay is replaced, not added.
+            disruption = db.execute(
+                text("""
+                    UPDATE public.queue_disruptions
+                    SET
+                        expected_delay_minutes = :delay,
+                        public_message = :message
+                    WHERE id = :id
+                      AND clinic_id = :clinic_id
+                    RETURNING
+                        id::text AS id,
+                        after_token_id::text AS after_token_id,
+                        event_type,
+                        expected_delay_minutes,
+                        public_message,
+                        status,
+                        started_at,
+                        resolved_at
+                """),
+                {
+                    "id": existing["id"],
+                    "clinic_id": staff["clinic_id"],
+                    "delay": payload.expected_delay_minutes,
+                    "message": payload.public_message
+                }
+            ).mappings().one()
+
+            event_type = "DELAY_UPDATED"
+            response_message = "Emergency updated."
+
+        else:
+            # Capture the patient currently being served.
+            after_token_id = _get_active_queue_token_id(
+                db,
+                staff["clinic_id"]
+            )
+
+            # Create a new emergency.
+            disruption = db.execute(
+                text("""
+                    INSERT INTO public.queue_disruptions (
+                        clinic_id,
+                        after_token_id,
+                        event_type,
+                        expected_delay_minutes,
+                        public_message,
+                        status,
+                        started_at,
+                        created_by
+                    )
+                    VALUES (
+                        :clinic_id,
+                        :after_token_id,
+                        'EMERGENCY',
+                        :delay,
+                        :message,
+                        'ACTIVE',
+                        NOW(),
+                        :staff_id
+                    )
+                    RETURNING
+                        id::text AS id,
+                        after_token_id::text AS after_token_id,
+                        event_type,
+                        expected_delay_minutes,
+                        public_message,
+                        status,
+                        started_at,
+                        resolved_at
+                """),
+                {
+                    "clinic_id": staff["clinic_id"],
+                    "delay": payload.expected_delay_minutes,
+                    "message": payload.public_message,
+                    "staff_id": staff["staff_id"],
+                    "after_token_id": after_token_id
+                }
+            ).mappings().one()
+
+            event_type = "DELAY_CREATED"
+            response_message = "Emergency activated."
+
+        # Notify connected patient portals through queue events.
+        _record_queue_event(
+            db,
+            staff["clinic_id"],
+            staff["staff_id"],
+            event_type,
+            public_message=disruption["public_message"]
+        )
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": response_message,
+            "disruption": dict(disruption)
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except SQLAlchemyError:
+        db.rollback()
+        logging.exception("Unable to create or update emergency.")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update emergency."
+        )
+
+
+@router.post("/disruptions/message")
+def create_or_update_custom_message(
+    payload: CustomMessagePayload,
+    staff=Depends(get_current_staff),
+    db: Session = Depends(get_db)
+):
+    verify_staff_role(staff)
+
+    try:
+        clinic = _get_clinic_for_update(
+            db,
+            staff["clinic_id"]
+        )
+
+        if clinic is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Clinic not found."
+            )
+
+        # Keep one active custom message per clinic.
+        existing = db.execute(
+            text("""
+                SELECT id
+                FROM public.queue_disruptions
+                WHERE clinic_id = :clinic_id
+                  AND event_type = 'CUSTOM_MESSAGE'
+                  AND status = 'ACTIVE'
+                ORDER BY started_at DESC
+                LIMIT 1
+                FOR UPDATE
+            """),
+            {
+                "clinic_id": staff["clinic_id"]
+            }
+        ).mappings().one_or_none()
+
+        if existing:
+            disruption = db.execute(
+                text("""
+                    UPDATE public.queue_disruptions
+                    SET
+                        expected_delay_minutes = :delay,
+                        public_message = :message
+                    WHERE id = :id
+                      AND clinic_id = :clinic_id
+                    RETURNING
+                        id::text AS id,
+                        after_token_id::text AS after_token_id,
+                        event_type,
+                        expected_delay_minutes,
+                        public_message,
+                        status,
+                        started_at,
+                        resolved_at
+                """),
+                {
+                    "id": existing["id"],
+                    "clinic_id": staff["clinic_id"],
+                    "delay": payload.expected_delay_minutes,
+                    "message": payload.public_message
+                }
+            ).mappings().one()
+
+            event_type = "CUSTOM_MESSAGE_UPDATED"
+            response_message = "Custom message updated."
+
+        else:
+            # Capture the patient currently being served.
+            after_token_id = _get_active_queue_token_id(
+                db,
+                staff["clinic_id"]
+            )
+            disruption = db.execute(
+                text("""
+                    INSERT INTO public.queue_disruptions (
+                        clinic_id,
+                        after_token_id,
+                        event_type,
+                        expected_delay_minutes,
+                        public_message,
+                        status,
+                        started_at,
+                        created_by
+                    )
+                    VALUES (
+                        :clinic_id,
+                        :after_token_id,
+                        'CUSTOM_MESSAGE',
+                        :delay,
+                        :message,
+                        'ACTIVE',
+                        NOW(),
+                        :staff_id
+                    )
+                    RETURNING
+                        id::text AS id,
+                        after_token_id::text AS after_token_id,
+                        event_type,
+                        expected_delay_minutes,
+                        public_message,
+                        status,
+                        started_at,
+                        resolved_at
+                """),
+                {
+                    "clinic_id": staff["clinic_id"],
+                    "delay": payload.expected_delay_minutes,
+                    "message": payload.public_message,
+                    "staff_id": staff["staff_id"],
+                    "after_token_id": after_token_id
+                }
+            ).mappings().one()
+
+            event_type = "CUSTOM_MESSAGE_CREATED"
+            response_message = "Custom message activated."
+
+        _record_queue_event(
+            db,
+            staff["clinic_id"],
+            staff["staff_id"],
+            event_type,
+            public_message=disruption["public_message"]
+        )
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": response_message,
+            "disruption": dict(disruption)
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except SQLAlchemyError:
+        db.rollback()
+        logging.exception("Unable to create or update custom message.")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update custom message."
+        )
+
+
+@router.post("/disruptions/{disruption_id}/resolve")
+def resolve_disruption(
+    disruption_id: UUID,
+    staff=Depends(get_current_staff),
+    db: Session = Depends(get_db)
+):
+    verify_staff_role(staff)
+
+    try:
+        clinic = _get_clinic_for_update(
+            db,
+            staff["clinic_id"]
+        )
+
+        if clinic is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Clinic not found."
+            )
+
+        disruption = db.execute(
+            text("""
+                SELECT
+                    id,
+                    event_type,
+                    public_message
+                FROM public.queue_disruptions
+                WHERE id = :id
+                  AND clinic_id = :clinic_id
+                  AND status = 'ACTIVE'
+                FOR UPDATE
+            """),
+            {
+                "id": disruption_id,
+                "clinic_id": staff["clinic_id"]
+            }
+        ).mappings().one_or_none()
+
+        if disruption is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Active disruption not found."
+            )
+
+        db.execute(
+            text("""
+                UPDATE public.queue_disruptions
+                SET
+                    status = 'RESOLVED',
+                    resolved_at = NOW()
+                WHERE id = :id
+                  AND clinic_id = :clinic_id
+            """),
+            {
+                "id": disruption_id,
+                "clinic_id": staff["clinic_id"]
+            }
+        )
+
+        event_type = (
+            "CUSTOM_MESSAGE_RESOLVED"
+            if disruption["event_type"] == "CUSTOM_MESSAGE"
+            else "DELAY_RESOLVED"
+        )
+
+        _record_queue_event(
+            db,
+            staff["clinic_id"],
+            staff["staff_id"],
+            event_type,
+            public_message=disruption["public_message"]
+        )
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": "Disruption resolved."
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except SQLAlchemyError:
+        db.rollback()
+        logging.exception("Unable to resolve disruption.")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to resolve disruption."
+        )
 
 
 # ==========================================

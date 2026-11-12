@@ -612,6 +612,34 @@ useEffect(() => {
   </div>
 </section>
 
+{/* ACTIVE EMERGENCY AND CLINIC MESSAGES */}
+{(patient.active_disruptions || []).map((disruption) => {
+  const isEmergency = disruption.event_type === 'EMERGENCY'
+
+  return (
+    <section
+      key={disruption.id}
+      className={`patient-disruption-alert ${
+        isEmergency ? 'emergency' : 'custom'
+      }`}
+      role="alert"
+    >
+      <div className="patient-disruption-heading">
+        <strong>
+          {isEmergency ? 'EMERGENCY ALERT' : 'CLINIC UPDATE'}
+        </strong>
+
+        {disruption.expected_delay_minutes > 0 && (
+          <span>
+            +{disruption.expected_delay_minutes} min delay
+          </span>
+        )}
+      </div>
+
+      <p>{disruption.public_message}</p>
+    </section>
+  )
+})}
 
 
         <section className="patient-clinic-status">
