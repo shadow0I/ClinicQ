@@ -36,8 +36,10 @@ DATABASE_URL = URL.create(
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
-    connect_args={"connect_timeout": 5},
-)
+    connect_args={
+    "connect_timeout": 5,
+    "sslmode": os.getenv("DB_SSLMODE", "prefer"),
+})
 
 SessionLocal = sessionmaker(
     bind=engine,

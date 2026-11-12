@@ -2,9 +2,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { QRCodeSVG } from 'qrcode.react'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 async function apiRequest(path, options = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
@@ -96,7 +97,7 @@ function App() {
 
     async function checkSession() {
       try {
-        const response = await fetch('/api/auth/me', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
           credentials: 'include',
         })
 
@@ -768,7 +769,7 @@ function handleDismissRegistration() {
           <h3>Patient Dashboard QR Code</h3>
 
         <QRCodeSVG
-          value={`${window.location.origin}/patient#qr=${encodeURIComponent(registration.qr_token)}`}
+          value={`${import.meta.env.VITE_PATIENT_PORTAL_URL || window.location.origin}/patient#qr=${encodeURIComponent(registration.qr_token)}`}
           size={200}
           level="H"
           marginSize={4}

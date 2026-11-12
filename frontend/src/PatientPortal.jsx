@@ -1,10 +1,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './PatientPortal.css'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 
 async function patientRequest(path, options = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: 'include',
     headers: {

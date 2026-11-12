@@ -39,7 +39,10 @@ url = URL.create(
 
 engine = create_engine(
     url,
-    connect_args={"connect_timeout": 5},
+    connect_args={
+    "connect_timeout": 5,
+    "sslmode": os.getenv("DB_SSLMODE", "prefer"),
+},
     pool_pre_ping=True,
 )
 
