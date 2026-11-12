@@ -1372,3 +1372,239 @@
     width: 100%;
   }
 }
+
+
+/* Patient registration launcher */
+
+.registration-panel {
+  padding: 28px;
+}
+
+.registration-launcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.registration-launcher-copy h3 {
+  margin: 8px 0;
+  color: #254638;
+  font-size: 21px;
+}
+
+.registration-launcher-copy p {
+  margin: 0;
+  color: #87968e;
+  line-height: 1.6;
+}
+
+/* Modal backdrop */
+
+.registration-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(16, 36, 28, 0.55);
+  backdrop-filter: blur(5px);
+}
+
+/* Modal window */
+
+.registration-modal {
+  width: min(620px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 30px;
+  border: 1px solid #dce9e1;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
+}
+
+.registration-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.registration-modal-header h2 {
+  margin: 9px 0;
+  color: #244638;
+  font-size: 27px;
+}
+
+.registration-modal-header p {
+  margin: 0;
+  color: #87968e;
+  line-height: 1.5;
+}
+
+.registration-close {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border: 1px solid #dce9e1;
+  border-radius: 11px;
+  background: #f5f8f6;
+  color: #355e4c;
+  font-size: 25px;
+  cursor: pointer;
+}
+
+/* Form layout */
+
+.patient-registration-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 19px;
+}
+
+.patient-registration-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  color: #345345;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.patient-registration-form input,
+.patient-registration-form select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0 13px;
+  border: 1px solid #d9e6de;
+  border-radius: 10px;
+  outline: none;
+  background: #fbfdfb;
+  color: #253e33;
+  font: inherit;
+  font-weight: 400;
+}
+
+.patient-registration-form input:focus,
+.patient-registration-form select:focus {
+  border-color: #23815f;
+  box-shadow: 0 0 0 3px rgba(35, 129, 95, 0.10);
+}
+
+.registration-full-width {
+  grid-column: 1 / -1;
+}
+
+/* Modal buttons */
+
+.registration-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 25px;
+}
+
+.registration-modal-actions button {
+  min-height: 46px;
+  padding: 0 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.registration-cancel {
+  border: 1px solid #d9e6de;
+  background: #ffffff;
+  color: #426253;
+}
+
+.registration-modal .register-action,
+.registration-launcher .register-action {
+  min-height: 46px;
+  padding: 0 22px;
+  border: none;
+  border-radius: 10px;
+  background: #176d52;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.registration-modal button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Success result */
+
+.registration-modal .registration-result {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.registration-modal .patient-qr-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid #e0ebe4;
+  border-radius: 14px;
+  background: #f6faf7;
+}
+
+.registration-modal .registration-result > .register-action {
+  align-self: flex-end;
+}
+
+/* Mobile layout */
+
+@media (max-width: 600px) {
+  .registration-panel {
+    padding: 21px;
+  }
+
+  .registration-launcher {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .registration-launcher .register-action {
+    width: 100%;
+  }
+
+  .registration-modal {
+    padding: 21px;
+    border-radius: 17px;
+  }
+
+  .registration-modal-header h2 {
+    font-size: 23px;
+  }
+
+  .patient-registration-form {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .registration-full-width {
+    grid-column: auto;
+  }
+
+  .registration-modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .registration-modal-actions button {
+    width: 100%;
+  }
+}

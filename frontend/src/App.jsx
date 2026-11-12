@@ -85,6 +85,7 @@ function App() {
   const [registrationError, setRegistrationError] = useState('')
   const [codeCopied, setCodeCopied] = useState(false)
   const [patientName, setPatientName] = useState('')
+  const [showRegistrationForm, setShowRegistrationForm] = useState(false)
   const [patientAge, setPatientAge] = useState('')
   const [patientSex, setPatientSex] = useState('')
   const [patientMobile, setPatientMobile] = useState('')
@@ -645,170 +646,237 @@ function handleDismissRegistration() {
                 </article>
               </section>
 
+
 <section className="panel registration-panel">
-  <div className="panel-heading">
-    <div>
+  <div className="registration-launcher">
+    <div className="registration-launcher-copy">
       <span className="panel-eyebrow">PATIENT REGISTRATION</span>
       <h3>Register a new patient</h3>
+      <p>
+        Add a patient to the queue and generate their private access code.
+      </p>
     </div>
 
-    <span className="waiting-count-pill">Staff access</span>
+    <button
+      className="register-action"
+      type="button"
+      onClick={() => setShowRegistrationForm(true)}
+    >
+      {registration ? 'View access code' : '+ Register patient'}
+    </button>
   </div>
+</section>
 
-  <p className="registration-description">
-    Create a new queue token and generate a private patient access code.
-  </p>
-
-<div className="patient-registration-form">
-  <label>
-    Patient name
-    <input
-      type="text"
-      value={patientName}
-      onChange={(e) => setPatientName(e.target.value)}
-      placeholder="Enter patient name"
-      required
-    />
-  </label>
-
-  <label>
-    Age
-    <input
-      type="number"
-      min="1"
-      max="120"
-      value={patientAge}
-      onChange={(e) => setPatientAge(e.target.value)}
-      placeholder="Enter age"
-      required
-    />
-  </label>
-
-  <label>
-    Sex
-    <select value={patientSex} onChange={(e) => setPatientSex(e.target.value)} required>
-      <option value="">Select sex</option>
-      <option value="Male">Male</option>
-      <option value="Female">Female</option>
-      <option value="Other">Other</option>
-      <option value="Prefer not to say">Prefer not to say</option>
-    </select>
-  </label>
-
-  <label>
-    Mobile number
-    <input
-      type="tel"
-      maxLength="10"
-      value={patientMobile}
-      onChange={(e) => setPatientMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
-      placeholder="10-digit mobile number"
-      required
-    />
-  </label>
-
-  <label>
-    Visit reason
-    <select value={visitReason} onChange={(e) => setVisitReason(e.target.value)}>
-      <option value="General check-up">General check-up</option>
-      <option value="Follow-up check-up">Follow-up check-up</option>
-      <option value="Fever">Fever</option>
-      <option value="Cold">Cold</option>
-      <option value="Other">Other</option>
-    </select>
-  </label>
-</div>
-
-  <button
-    className="register-action"
-    type="button"
-    disabled={registerLoading || Boolean(registration)}
-    onClick={handleRegisterPatient}
+{showRegistrationForm && (
+  <div
+    className="registration-modal-backdrop"
+    onClick={() => setShowRegistrationForm(false)}
   >
-    {registerLoading
-      ? 'Registering patient...'
-      : registration
-        ? 'Save the access code first'
-        : '+ Register patient'}
-  </button>
-
-  {registrationError && (
-    <div className="error-message" role="alert">
-      {registrationError}
-    </div>
-  )}
-
-  {registration && (
-    <div className="registration-result">
-      <div className="registration-result-heading">
-        <span className="success-check">✓</span>
+    <section
+      className="registration-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="registration-modal-title"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="registration-modal-header">
         <div>
-          <strong>Patient registered successfully</strong>
-          <p>Token #{registration.token_number}</p>
+          <span className="panel-eyebrow">PATIENT REGISTRATION</span>
+          <h2 id="registration-modal-title">
+            {registration ? 'Patient registered' : 'Register new patient'}
+          </h2>
+          <p>
+            {registration
+              ? 'Save the patient access details securely.'
+              : 'Enter the patient details to create a queue token.'}
+          </p>
         </div>
+
+        <button
+          type="button"
+          className="registration-close"
+          onClick={() => setShowRegistrationForm(false)}
+          aria-label="Close registration"
+        >
+          ×
+        </button>
       </div>
 
-      <div className="registration-details">
-        <div>
-          <span>Clinic</span>
-          <strong>{registration.clinic_name}</strong>
-        </div>
+      {!registration && (
+        <>
+          <div className="patient-registration-form">
+            <label>
+              Patient name
+              <input
+                type="text"
+                value={patientName}
+                onChange={(e) => setPatientName(e.target.value)}
+                placeholder="Enter patient name"
+                required
+              />
+            </label>
 
-        <div>
-          <span>Doctor</span>
-          <strong>{registration.doctor_name}</strong>
-        </div>
+            <label>
+              Age
+              <input
+                type="number"
+                min="1"
+                max="120"
+                value={patientAge}
+                onChange={(e) => setPatientAge(e.target.value)}
+                placeholder="Enter age"
+                required
+              />
+            </label>
 
-        <div>
-          <span>Queue status</span>
-          <strong>{getStatusLabel(registration.patient_status)}</strong>
-        </div>
-      </div>
+            <label>
+              Sex
+              <select
+                value={patientSex}
+                onChange={(e) => setPatientSex(e.target.value)}
+                required
+              >
+                <option value="">Select sex</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </label>
 
-      <div className="patient-qr-section">
-          <h3>Patient Dashboard QR Code</h3>
+            <label>
+              Mobile number
+              <input
+                type="tel"
+                maxLength="10"
+                value={patientMobile}
+                onChange={(e) =>
+                  setPatientMobile(
+                    e.target.value.replace(/\D/g, '').slice(0, 10)
+                  )
+                }
+                placeholder="10-digit mobile number"
+                required
+              />
+            </label>
 
-        <QRCodeSVG
-          value={`${import.meta.env.VITE_PATIENT_PORTAL_URL || window.location.origin}/patient#qr=${encodeURIComponent(registration.qr_token)}`}
-          size={200}
-          level="H"
-          marginSize={4}
-        />
+            <label className="registration-full-width">
+              Visit reason
+              <select
+                value={visitReason}
+                onChange={(e) => setVisitReason(e.target.value)}
+              >
+                <option value="General check-up">General check-up</option>
+                <option value="Follow-up check-up">Follow-up check-up</option>
+                <option value="Fever">Fever</option>
+                <option value="Cold">Cold</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+          </div>
 
-        <p>Scan this QR code to open your personal patient dashboard.</p>
-      </div>
+          {registrationError && (
+            <div className="error-message" role="alert">
+              {registrationError}
+            </div>
+          )}
 
-      <div className="access-code-section">
-        <label>Private patient access code</label>
+          <div className="registration-modal-actions">
+            <button
+              type="button"
+              className="registration-cancel"
+              onClick={() => setShowRegistrationForm(false)}
+              disabled={registerLoading}
+            >
+              Cancel
+            </button>
 
-        <div className="access-code-row">
-          <code>{registration.patient_access_code}</code>
+            <button
+              type="button"
+              className="register-action"
+              onClick={handleRegisterPatient}
+              disabled={registerLoading}
+            >
+              {registerLoading ? 'Registering...' : 'Register patient'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {registration && (
+        <div className="registration-result">
+          <div className="registration-result-heading">
+            <span className="success-check">✓</span>
+            <div>
+              <strong>Patient registered successfully</strong>
+              <p>Token #{registration.token_number}</p>
+            </div>
+          </div>
+
+          <div className="registration-details">
+            <div>
+              <span>Clinic</span>
+              <strong>{registration.clinic_name}</strong>
+            </div>
+
+            <div>
+              <span>Doctor</span>
+              <strong>{registration.doctor_name}</strong>
+            </div>
+
+            <div>
+              <span>Queue status</span>
+              <strong>
+                {getStatusLabel(registration.patient_status)}
+              </strong>
+            </div>
+          </div>
+
+          <div className="patient-qr-section">
+            <h3>Patient dashboard QR code</h3>
+
+            <QRCodeSVG
+              value={`${window.location.origin}/patient#qr=${encodeURIComponent(registration.qr_token)}`}
+              size={200}
+              level="H"
+              marginSize={4}
+            />
+
+            <p>Scan to open the patient's personal dashboard.</p>
+          </div>
+
+          <div className="access-code-section">
+            <label>Private patient access code</label>
+
+            <div className="access-code-row">
+              <code>{registration.patient_access_code}</code>
+
+              <button
+                type="button"
+                className="copy-code-button"
+                onClick={handleCopyAccessCode}
+              >
+                {codeCopied ? 'Copied ✓' : 'Copy code'}
+              </button>
+            </div>
+
+            <p className="access-code-warning">
+              Save this code securely. It cannot be retrieved later.
+            </p>
+          </div>
 
           <button
             type="button"
-            className="copy-code-button"
-            onClick={handleCopyAccessCode}
+            className="register-action"
+            onClick={() => setShowRegistrationForm(false)}
           >
-            {codeCopied ? 'Copied ✓' : 'Copy code'}
+            Done
           </button>
         </div>
-
-        <p className="access-code-warning">
-          This code cannot be retrieved later. Save it and share it
-          securely with the patient.
-        </p>
-      </div>
-
-      <button
-        type="button"
-        className="dismiss-code-button"
-        onClick={handleDismissRegistration}
-      >
-        I've saved the access code
-      </button>
-    </div>
-  )}
-</section>
+      )}
+    </section>
+  </div>
+)}    
 
 
               <section className="dashboard-action-grid">
