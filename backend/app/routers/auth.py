@@ -136,7 +136,7 @@ def staff_login(
         value=raw_token,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite="none",
         max_age=int(SESSION_DURATION.total_seconds()),
         path="/"
     )
@@ -202,7 +202,7 @@ def staff_logout(
         path="/",
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax"
+        samesite="none"
     )
 
     return {

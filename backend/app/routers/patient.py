@@ -47,7 +47,7 @@ def set_patient_cookie(response: Response, raw_token: str):
         value=raw_token,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite="none",
         max_age=int(PATIENT_SESSION_DURATION.total_seconds()),
         path="/",
     )
@@ -519,7 +519,7 @@ def patient_logout(
         path="/",
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite="none",
     )
 
     return {
