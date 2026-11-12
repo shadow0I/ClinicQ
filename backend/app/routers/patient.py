@@ -39,7 +39,7 @@ class PatientQRAccessRequest(BaseModel):
 COOKIE_SECURE = (
     os.getenv("COOKIE_SECURE", "false").lower() == "true"
 )
-
+COOKIE_SAMESITE = "none" if COOKIE_SECURE else "lax"
 
 def set_patient_cookie(response: Response, raw_token: str):
     response.set_cookie(
@@ -47,11 +47,10 @@ def set_patient_cookie(response: Response, raw_token: str):
         value=raw_token,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="none",
+        samesite=COOKIE_SAMESITE,
         max_age=int(PATIENT_SESSION_DURATION.total_seconds()),
         path="/",
     )
-
 
 def get_patient_context(request: Request, db: Session):
     raw_token = request.cookies.get(PATIENT_COOKIE_NAME)
@@ -459,6 +458,25 @@ def get_patient_details(
             "Your token is no longer in the active waiting queue."
         )
 
+    # Fetch public active emergencies and custom messages.
+    active_disruptions = db.execute(
+        text("""
+            SELECT
+                id::text AS id,
+                event_type,
+                expected_delay_minutes,
+                public_message,
+                started_at
+            FROM public.queue_disruptions
+            WHERE clinic_id = :clinic_id
+              AND status = 'ACTIVE'
+            ORDER BY started_at DESC
+        """),
+        {
+            "clinic_id": patient["clinic_id"]
+        }
+    ).mappings().all()
+
     return {
         "status": "success",
         "patient": {
@@ -473,7 +491,9 @@ def get_patient_details(
             "waiting_ahead": waiting_ahead,
             "queue_position": queue_position,
             "current_serving_token_number": current_consultation,
-
+            "active_disruptions": [
+    dict(row) for row in active_disruptions
+],
                         **prediction,
         }
     }
@@ -515,12 +535,12 @@ def patient_logout(
             )
 
     response.delete_cookie(
-        key=PATIENT_COOKIE_NAME,
-        path="/",
-        httponly=True,
-        secure=COOKIE_SECURE,
-        samesite="none",
-    )
+    key=PATIENT_COOKIE_NAME,
+    path="/",
+    httponly=True,
+    secure=COOKIE_SECURE,
+    samesite=COOKIE_SAMESITE,
+)
 
     return {
         "status": "success",

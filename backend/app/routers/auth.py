@@ -28,6 +28,7 @@ COOKIE_SECURE = (
     os.getenv("COOKIE_SECURE", "false").lower() == "true"
 )
 
+COOKIE_SAMESITE = "none" if COOKIE_SECURE else "lax"
 
 @router.post("/login")
 def staff_login(
@@ -132,14 +133,14 @@ def staff_login(
 
     # Set the raw token in an HttpOnly cookie.
     response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=raw_token,
-        httponly=True,
-        secure=COOKIE_SECURE,
-        samesite="none",
-        max_age=int(SESSION_DURATION.total_seconds()),
-        path="/"
-    )
+    key=SESSION_COOKIE_NAME,
+    value=raw_token,
+    httponly=True,
+    secure=COOKIE_SECURE,
+    samesite=COOKIE_SAMESITE,
+    max_age=int(SESSION_DURATION.total_seconds()),
+    path="/"
+)
 
     return {
         "status": "ok",
@@ -198,12 +199,12 @@ def staff_logout(
             )
 
     response.delete_cookie(
-        key=SESSION_COOKIE_NAME,
-        path="/",
-        httponly=True,
-        secure=COOKIE_SECURE,
-        samesite="none"
-    )
+    key=SESSION_COOKIE_NAME,
+    path="/",
+    httponly=True,
+    secure=COOKIE_SECURE,
+    samesite=COOKIE_SAMESITE
+)
 
     return {
         "status": "ok",

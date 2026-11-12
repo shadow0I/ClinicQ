@@ -1,4 +1,8 @@
 
+-- ClinicQ fresh-install schema.
+-- Do not run this file against an existing database; use versioned migrations
+-- for existing deployments so data and current constraints are preserved.
+
 BEGIN;
 
 -- 1. CLINICS
@@ -101,6 +105,22 @@ CREATE TABLE public.queue_tokens (
     token_date DATE NOT NULL,
     token_number INTEGER NOT NULL,
     access_code_hash TEXT NOT NULL,
+    qr_access_hash TEXT NOT NULL UNIQUE,
+    patient_name TEXT NOT NULL,
+    age INTEGER NOT NULL CHECK (age BETWEEN 0 AND 120),
+    sex TEXT NOT NULL CHECK (
+        sex IN ('Male', 'Female', 'Other', 'Prefer not to say')
+    ),
+    mobile_number TEXT NOT NULL CHECK (
+        mobile_number ~ '^[6-9][0-9]{9}$'
+    ),
+    visit_reason TEXT NOT NULL CHECK (
+        visit_reason IN (
+            'General check-up',
+            'Follow-up check-up',
+            'Other'
+        )
+    ),
     status public.token_status NOT NULL DEFAULT 'WAITING',
     joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -125,7 +145,28 @@ ON public.queue_tokens (
 );
 
 
--- 8. CONSULTATIONS
+-- 8. PATIENT SESSIONS
+CREATE TABLE public.patient_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    clinic_id UUID NOT NULL,
+    token_id UUID NOT NULL,
+    session_token_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+
+    CHECK (expires_at > created_at),
+    CHECK (revoked_at IS NULL OR revoked_at >= created_at),
+
+    FOREIGN KEY (clinic_id, token_id)
+        REFERENCES public.queue_tokens(clinic_id, id)
+);
+
+CREATE INDEX idx_patient_sessions_token
+ON public.patient_sessions (clinic_id, token_id);
+
+
+-- 9. CONSULTATIONS
 CREATE TABLE public.consultations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id UUID NOT NULL,
@@ -133,6 +174,9 @@ CREATE TABLE public.consultations (
     doctor_id UUID NOT NULL,
     started_at TIMESTAMPTZ NOT NULL,
     ended_at TIMESTAMPTZ,
+    outcome TEXT CHECK (
+        outcome IS NULL OR outcome IN ('COMPLETED', 'INTERRUPTED')
+    ),
 
     CHECK (ended_at IS NULL OR ended_at >= started_at),
 
@@ -154,7 +198,7 @@ CREATE INDEX idx_consultation_history
 ON public.consultations (clinic_id, doctor_id, ended_at);
 
 
--- 9. QUEUE EVENTS
+-- 10. QUEUE EVENTS
 CREATE TABLE public.queue_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id UUID NOT NULL REFERENCES public.clinics(id),
@@ -166,10 +210,15 @@ CREATE TABLE public.queue_events (
             'CONSULTATION_COMPLETED',
             'TOKEN_SKIPPED',
             'TOKEN_CANCELLED',
+            'CONSULTATION_INTERRUPTED',
             'QUEUE_PAUSED',
             'QUEUE_RESUMED',
             'DELAY_CREATED',
-            'DELAY_RESOLVED'
+            'DELAY_UPDATED',
+            'DELAY_RESOLVED',
+            'CUSTOM_MESSAGE_CREATED',
+            'CUSTOM_MESSAGE_UPDATED',
+            'CUSTOM_MESSAGE_RESOLVED'
         )
     ),
     public_message VARCHAR(240),
@@ -187,15 +236,18 @@ CREATE INDEX idx_queue_events_clinic_time
 ON public.queue_events (clinic_id, event_time);
 
 
--- 10. QUEUE DISRUPTIONS
+-- 11. QUEUE DISRUPTIONS
 CREATE TABLE public.queue_disruptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id UUID NOT NULL REFERENCES public.clinics(id),
+    after_token_id UUID,
+    FOREIGN KEY (clinic_id, after_token_id)
+    REFERENCES public.queue_tokens(clinic_id, id),
     event_type TEXT NOT NULL CHECK (
         event_type IN ('EMERGENCY', 'DELAY', 'CUSTOM_MESSAGE')
     ),
     expected_delay_minutes INTEGER NOT NULL
-        CHECK (expected_delay_minutes BETWEEN 1 AND 240),
+        CHECK (expected_delay_minutes BETWEEN 0 AND 240),
     public_message VARCHAR(240) NOT NULL,
     status TEXT NOT NULL DEFAULT 'ACTIVE'
         CHECK (status IN ('ACTIVE', 'RESOLVED')),
@@ -217,7 +269,8 @@ CREATE INDEX idx_active_disruptions
 ON public.queue_disruptions (clinic_id, status);
 
 
--- 11. WAITING ROOM PRESENCE
+
+-- 12. WAITING ROOM PRESENCE
 CREATE TABLE public.presence_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id UUID NOT NULL,
@@ -243,7 +296,7 @@ CREATE INDEX idx_presence_token_time
 ON public.presence_events (clinic_id, token_id, event_time);
 
 
--- 12. PREDICTION SNAPSHOTS
+-- 13. PREDICTION SNAPSHOTS
 CREATE TABLE public.prediction_snapshots (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id UUID NOT NULL,
