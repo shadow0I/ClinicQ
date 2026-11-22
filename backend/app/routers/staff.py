@@ -467,15 +467,37 @@ def _get_token_for_update(db, clinic_id, token_id):
     ).mappings().one_or_none()
 
 def _get_active_queue_token_id(db, clinic_id):
-    """Return the token currently in consultation for this clinic."""
+    """Return the active consultation token, or the latest processed token today."""
 
-    return db.execute(
+    active_token_id = db.execute(
         text("""
             SELECT token_id
             FROM public.consultations
             WHERE clinic_id = :clinic_id
               AND ended_at IS NULL
             ORDER BY started_at DESC
+            LIMIT 1
+        """),
+        {
+            "clinic_id": clinic_id
+        }
+    ).scalar_one_or_none()
+
+    if active_token_id is not None:
+        return active_token_id
+
+    # When nobody is currently in consultation, anchor new disruptions after
+    # the most recently processed token from the clinic's current local day.
+    return db.execute(
+        text("""
+            SELECT qt.id
+            FROM public.queue_tokens AS qt
+            JOIN public.clinics AS c
+              ON c.id = qt.clinic_id
+            WHERE qt.clinic_id = :clinic_id
+              AND qt.token_date = (NOW() AT TIME ZONE c.timezone)::date
+              AND qt.status IN ('COMPLETED', 'SKIPPED', 'CANCELLED')
+            ORDER BY qt.updated_at DESC NULLS LAST, qt.token_number DESC
             LIMIT 1
         """),
         {
