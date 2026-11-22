@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.prediction_service import generate_and_store_prediction
 from app.queue_recovery import recover_stale_consultations
+from app.disruption_recovery import expire_previous_day_disruptions
 from app.db import SessionLocal, get_db
 from app.schemas import PatientAccessRequest
 from app.security import (
@@ -323,11 +324,16 @@ def get_patient_details(
         db=db,
         clinic_id=patient["clinic_id"],
     )
+    expired_disruption_count = expire_previous_day_disruptions(
+        db=db,
+        clinic_id=patient["clinic_id"],
+    )
 
-    if recovered_count > 0:
+    if recovered_count > 0 or expired_disruption_count > 0:
         db.commit()
 
-        # Refresh patient context after recovery.
+    if recovered_count > 0:
+        # Refresh patient context after a stale consultation was recovered.
         patient = get_patient_context(request, db)
 
     waiting_ahead = 0
@@ -462,15 +468,19 @@ def get_patient_details(
     active_disruptions = db.execute(
         text("""
             SELECT
-                id::text AS id,
-                event_type,
-                expected_delay_minutes,
-                public_message,
-                started_at
-            FROM public.queue_disruptions
-            WHERE clinic_id = :clinic_id
-              AND status = 'ACTIVE'
-            ORDER BY started_at DESC
+                qd.id::text AS id,
+                qd.event_type,
+                qd.expected_delay_minutes,
+                qd.public_message,
+                qd.started_at
+            FROM public.queue_disruptions AS qd
+            JOIN public.clinics AS c
+              ON c.id = qd.clinic_id
+            WHERE qd.clinic_id = :clinic_id
+              AND qd.status = 'ACTIVE'
+              AND (qd.started_at AT TIME ZONE c.timezone)::date =
+                  (NOW() AT TIME ZONE c.timezone)::date
+            ORDER BY qd.started_at DESC
         """),
         {
             "clinic_id": patient["clinic_id"]

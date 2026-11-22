@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.queue_recovery import recover_stale_consultations
+from app.disruption_recovery import expire_previous_day_disruptions
 from app.db import get_db
 from app.dependencies import get_current_staff
 from app.schemas import StaffTokenCreate
@@ -294,8 +295,12 @@ def get_staff_queue(
             clinic["id"],
             staff_user_id=staff["staff_id"]
         )
+        expired_disruption_count = expire_previous_day_disruptions(
+            db,
+            clinic["id"]
+        )
 
-        if recovered_count > 0:
+        if recovered_count > 0 or expired_disruption_count > 0:
             db.commit()
 
         # Find the active doctor for the current MVP.
@@ -369,16 +374,20 @@ def get_staff_queue(
         active_disruptions = db.execute(
             text("""
                 SELECT
-                    id::text AS id,
-                    after_token_id::text AS after_token_id,
-                    event_type,
-                    expected_delay_minutes,
-                    public_message,
-                    started_at
-                FROM public.queue_disruptions
-                WHERE clinic_id = :clinic_id
-                  AND status = 'ACTIVE'
-                ORDER BY started_at DESC
+                    qd.id::text AS id,
+                    qd.after_token_id::text AS after_token_id,
+                    qd.event_type,
+                    qd.expected_delay_minutes,
+                    qd.public_message,
+                    qd.started_at
+                FROM public.queue_disruptions AS qd
+                JOIN public.clinics AS c
+                  ON c.id = qd.clinic_id
+                WHERE qd.clinic_id = :clinic_id
+                  AND qd.status = 'ACTIVE'
+                  AND (qd.started_at AT TIME ZONE c.timezone)::date =
+                      (NOW() AT TIME ZONE c.timezone)::date
+                ORDER BY qd.started_at DESC
             """),
             {
                 "clinic_id": clinic["id"]
@@ -467,20 +476,50 @@ def _get_token_for_update(db, clinic_id, token_id):
     ).mappings().one_or_none()
 
 def _get_active_queue_token_id(db, clinic_id):
-    """Return the token currently in consultation for this clinic."""
+    """Anchor a disruption after the active or most recently processed token today."""
 
-    return db.execute(
+    # Prefer the patient currently in consultation, but only from today's
+    # clinic-local queue. An unfinished consultation from yesterday must not
+    # become today's disruption anchor.
+    active_token_id = db.execute(
         text("""
-            SELECT token_id
-            FROM public.consultations
-            WHERE clinic_id = :clinic_id
-              AND ended_at IS NULL
-            ORDER BY started_at DESC
+            SELECT co.token_id
+            FROM public.consultations AS co
+            JOIN public.queue_tokens AS qt
+              ON qt.clinic_id = co.clinic_id
+             AND qt.id = co.token_id
+            JOIN public.clinics AS c
+              ON c.id = co.clinic_id
+            WHERE co.clinic_id = :clinic_id
+              AND co.ended_at IS NULL
+              AND qt.token_date =
+                    (NOW() AT TIME ZONE c.timezone)::date
+            ORDER BY co.started_at DESC
             LIMIT 1
         """),
-        {
-            "clinic_id": clinic_id
-        }
+        {"clinic_id": clinic_id}
+    ).scalar_one_or_none()
+
+    if active_token_id is not None:
+        return active_token_id
+
+    # If nobody is currently being served, place the disruption after the
+    # latest token that was completed, skipped or cancelled today.
+    return db.execute(
+        text("""
+            SELECT qt.id
+            FROM public.queue_tokens AS qt
+            JOIN public.clinics AS c
+              ON c.id = qt.clinic_id
+            WHERE qt.clinic_id = :clinic_id
+              AND qt.token_date =
+                    (NOW() AT TIME ZONE c.timezone)::date
+              AND qt.status IN ('COMPLETED', 'SKIPPED', 'CANCELLED')
+            ORDER BY qt.updated_at DESC NULLS LAST,
+                     qt.token_number DESC
+            LIMIT 1
+        """),
+        {"clinic_id": clinic_id}
     ).scalar_one_or_none()
 
 def _record_queue_event(
@@ -543,17 +582,24 @@ def create_or_update_emergency(
                 detail="Clinic not found."
             )
 
-        # Find the existing active emergency.
+        # Automatically close alerts that belong to an earlier clinic day.
+        expire_previous_day_disruptions(db, staff["clinic_id"])
+
+        # Find the existing active emergency for today only.
         existing = db.execute(
             text("""
-                SELECT id
-                FROM public.queue_disruptions
-                WHERE clinic_id = :clinic_id
-                  AND event_type = 'EMERGENCY'
-                  AND status = 'ACTIVE'
-                ORDER BY started_at DESC
+                SELECT qd.id
+                FROM public.queue_disruptions AS qd
+                JOIN public.clinics AS c
+                  ON c.id = qd.clinic_id
+                WHERE qd.clinic_id = :clinic_id
+                  AND qd.event_type = 'EMERGENCY'
+                  AND qd.status = 'ACTIVE'
+                  AND (qd.started_at AT TIME ZONE c.timezone)::date =
+                      (NOW() AT TIME ZONE c.timezone)::date
+                ORDER BY qd.started_at DESC
                 LIMIT 1
-                FOR UPDATE
+                FOR UPDATE OF qd
             """),
             {
                 "clinic_id": staff["clinic_id"]
@@ -694,17 +740,24 @@ def create_or_update_custom_message(
                 detail="Clinic not found."
             )
 
-        # Keep one active custom message per clinic.
+        # Automatically close alerts that belong to an earlier clinic day.
+        expire_previous_day_disruptions(db, staff["clinic_id"])
+
+        # Keep one active custom message per clinic day.
         existing = db.execute(
             text("""
-                SELECT id
-                FROM public.queue_disruptions
-                WHERE clinic_id = :clinic_id
-                  AND event_type = 'CUSTOM_MESSAGE'
-                  AND status = 'ACTIVE'
-                ORDER BY started_at DESC
+                SELECT qd.id
+                FROM public.queue_disruptions AS qd
+                JOIN public.clinics AS c
+                  ON c.id = qd.clinic_id
+                WHERE qd.clinic_id = :clinic_id
+                  AND qd.event_type = 'CUSTOM_MESSAGE'
+                  AND qd.status = 'ACTIVE'
+                  AND (qd.started_at AT TIME ZONE c.timezone)::date =
+                      (NOW() AT TIME ZONE c.timezone)::date
+                ORDER BY qd.started_at DESC
                 LIMIT 1
-                FOR UPDATE
+                FOR UPDATE OF qd
             """),
             {
                 "clinic_id": staff["clinic_id"]

@@ -129,14 +129,18 @@ def generate_and_store_prediction(
     active_delay_minutes = db.execute(
         text("""
             SELECT COALESCE(
-                SUM(expected_delay_minutes),
+                SUM(qd.expected_delay_minutes),
                 0
             )::INTEGER
 
-            FROM public.queue_disruptions
+            FROM public.queue_disruptions AS qd
+            JOIN public.clinics AS c
+              ON c.id = qd.clinic_id
 
-            WHERE clinic_id = :clinic_id
-              AND status = 'ACTIVE'
+            WHERE qd.clinic_id = :clinic_id
+              AND qd.status = 'ACTIVE'
+              AND (qd.started_at AT TIME ZONE c.timezone)::date =
+                  (NOW() AT TIME ZONE c.timezone)::date
         """),
         {"clinic_id": patient["clinic_id"]}
     ).scalar_one()
