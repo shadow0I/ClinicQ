@@ -25,7 +25,7 @@ def setting(name: str, default: str = "") -> str:
 
 
 def provider_configuration() -> dict:
-    provider = setting("IVR_PROVIDER", "exotel").lower()
+    provider = setting("IVR_PROVIDER", "mock").lower()
     required = {
         "EXOTEL_API_KEY": setting("EXOTEL_API_KEY"),
         "EXOTEL_API_TOKEN": setting("EXOTEL_API_TOKEN"),

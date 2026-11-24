@@ -404,7 +404,7 @@ useEffect(() => {
   if (!patient) {
     return (
       <main className="patient-page patient-login-page">
-        
+
 
         <section className="patient-login-layout">
           <div className="patient-welcome">
@@ -654,7 +654,7 @@ useEffect(() => {
           </div>
         </section>
 
-        
+
       </main>
     )
   }
@@ -781,19 +781,7 @@ useEffect(() => {
         </section>
 
         <section className="patient-metrics">
-          <article className="patient-metric-card">
-            <span>Queue position</span>
 
-            <strong>
-              {isWaiting ? `#${patient.queue_position}` : '—'}
-            </strong>
-
-            <p>
-              {isWaiting
-                ? 'Your current position'
-                : 'Not currently waiting'}
-            </p>
-          </article>
 
           <article className="patient-metric-card">
             <span>Patients ahead</span>
