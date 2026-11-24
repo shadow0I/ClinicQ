@@ -15,12 +15,14 @@ from app.prediction_service import generate_and_store_prediction
 from app.queue_recovery import recover_stale_consultations
 from app.disruption_recovery import expire_previous_day_disruptions
 from app.db import SessionLocal, get_db
-from app.schemas import PatientAccessRequest
+from app.schemas import PatientAccessRequest, PatientSelfRegistration
 from app.security import (
     create_session_token,
     hash_session_token,
     hash_patient_access_code,
     hash_patient_qr_token,
+    create_patient_access_code,
+    create_patient_qr_token,
 )
 
 logger = logging.getLogger("clinicq.patient")
@@ -76,6 +78,7 @@ def get_patient_context(request: Request, db: Session):
                 t.token_number,
                 t.status::text AS patient_status,
                 t.joined_at,
+                t.voice_reminder_consent,
 
 
                 c.name AS clinic_name,
@@ -114,6 +117,191 @@ def get_patient_context(request: Request, db: Session):
         )
 
     return patient
+
+
+@router.get("/clinics")
+def list_public_clinics(db: Session = Depends(get_db)):
+    """List active clinics that allow public patient registration."""
+    rows = db.execute(
+        text("""
+            SELECT name, clinic_code
+            FROM public.clinics
+            WHERE is_active = TRUE
+              AND public_registration_enabled = TRUE
+            ORDER BY name, clinic_code
+        """)
+    ).mappings().all()
+    return {"status": "success", "clinics": [dict(row) for row in rows]}
+
+
+@router.get("/clinics/{clinic_code}/doctors")
+def list_public_clinic_doctors(
+    clinic_code: str,
+    db: Session = Depends(get_db),
+):
+    """List active doctors for one publicly registered clinic."""
+    normalised_code = clinic_code.strip().upper()
+    clinic = db.execute(text("""
+        SELECT id
+        FROM public.clinics
+        WHERE UPPER(clinic_code) = :clinic_code
+          AND is_active = TRUE
+          AND public_registration_enabled = TRUE
+        LIMIT 1
+    """), {"clinic_code": normalised_code}).mappings().one_or_none()
+    if clinic is None:
+        raise HTTPException(status_code=404, detail="Clinic is unavailable for online registration.")
+
+    doctors = db.execute(text("""
+        SELECT id::text AS id, display_name
+        FROM public.doctors
+        WHERE clinic_id = :clinic_id
+          AND is_active = TRUE
+        ORDER BY created_at, id
+        LIMIT 1
+    """), {"clinic_id": clinic["id"]}).mappings().all()
+    return {"status": "success", "doctors": [dict(row) for row in doctors]}
+
+
+@router.post("/register", status_code=201)
+def self_register_patient(
+    payload: PatientSelfRegistration,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """Create a queue token for the selected clinic and sign the patient in."""
+    try:
+        clinic = db.execute(text("""
+            SELECT id, name, clinic_code, timezone
+            FROM public.clinics
+            WHERE UPPER(clinic_code) = :clinic_code
+              AND is_active = TRUE
+              AND public_registration_enabled = TRUE
+            LIMIT 1
+            FOR SHARE
+        """), {"clinic_code": payload.clinic_code}).mappings().one_or_none()
+        if clinic is None:
+            raise HTTPException(status_code=404, detail="Clinic is unavailable for online registration.")
+
+        doctor = db.execute(text("""
+            SELECT id, display_name
+            FROM public.doctors
+            WHERE id = :doctor_id
+              AND clinic_id = :clinic_id
+              AND is_active = TRUE
+              AND id = (
+                  SELECT id
+                  FROM public.doctors
+                  WHERE clinic_id = :clinic_id AND is_active = TRUE
+                  ORDER BY created_at, id
+                  LIMIT 1
+              )
+            LIMIT 1
+        """), {
+            "doctor_id": payload.doctor_id,
+            "clinic_id": clinic["id"],
+        }).mappings().one_or_none()
+        if doctor is None:
+            raise HTTPException(status_code=409, detail="Selected doctor is not available at this clinic.")
+
+        token_date = db.execute(text("""
+            SELECT (NOW() AT TIME ZONE :timezone)::date
+        """), {"timezone": clinic["timezone"]}).scalar_one()
+
+        token_number = db.execute(text("""
+            INSERT INTO public.clinic_day_counters (
+                clinic_id, token_date, last_issued_number
+            )
+            VALUES (:clinic_id, :token_date, 1)
+            ON CONFLICT (clinic_id, token_date)
+            DO UPDATE SET last_issued_number =
+                public.clinic_day_counters.last_issued_number + 1
+            RETURNING last_issued_number
+        """), {
+            "clinic_id": clinic["id"],
+            "token_date": token_date,
+        }).scalar_one()
+
+        access_code = create_patient_access_code()
+        qr_token = create_patient_qr_token()
+        token = db.execute(text("""
+            INSERT INTO public.queue_tokens (
+                clinic_id, doctor_id, token_date, token_number,
+                access_code_hash, qr_access_hash,
+                patient_name, age, sex, mobile_number, visit_reason,
+                voice_reminder_consent, voice_reminder_consent_at
+            )
+            VALUES (
+                :clinic_id, :doctor_id, :token_date, :token_number,
+                :access_code_hash, :qr_access_hash,
+                :patient_name, :age, :sex, :mobile_number, :visit_reason,
+                :voice_reminder_consent,
+                CASE WHEN :voice_reminder_consent THEN NOW() ELSE NULL END
+            )
+            RETURNING id, joined_at, status::text AS status
+        """), {
+            "clinic_id": clinic["id"],
+            "doctor_id": doctor["id"],
+            "token_date": token_date,
+            "token_number": token_number,
+            "access_code_hash": hash_patient_access_code(access_code),
+            "qr_access_hash": hash_patient_qr_token(qr_token),
+            "patient_name": payload.patient_name,
+            "age": payload.age,
+            "sex": payload.sex,
+            "mobile_number": payload.mobile_number,
+            "visit_reason": payload.visit_reason,
+            "voice_reminder_consent": payload.voice_reminder_consent,
+        }).mappings().one()
+
+        db.execute(text("""
+            INSERT INTO public.queue_events (
+                clinic_id, token_id, event_type, event_time
+            )
+            VALUES (:clinic_id, :token_id, 'PATIENT_SELF_REGISTERED', NOW())
+        """), {"clinic_id": clinic["id"], "token_id": token["id"]})
+
+        raw_session_token = create_session_token()
+        expires_at = datetime.now(timezone.utc) + PATIENT_SESSION_DURATION
+        db.execute(text("""
+            INSERT INTO public.patient_sessions (
+                clinic_id, token_id, session_token_hash, expires_at
+            )
+            VALUES (:clinic_id, :token_id, :session_hash, :expires_at)
+        """), {
+            "clinic_id": clinic["id"],
+            "token_id": token["id"],
+            "session_hash": hash_session_token(raw_session_token),
+            "expires_at": expires_at,
+        })
+        db.commit()
+        set_patient_cookie(response, raw_session_token)
+
+        return {
+            "status": "success",
+            "message": "You are registered. Save your access code for future sign-in.",
+            "clinic_name": clinic["name"],
+            "clinic_code": clinic["clinic_code"],
+            "doctor_name": doctor["display_name"],
+            "token_date": str(token_date),
+            "token_number": token_number,
+            "patient_status": token["status"],
+            "joined_at": token["joined_at"],
+            "patient_access_code": access_code,
+            "qr_token": qr_token,
+            "voice_reminder_consent": payload.voice_reminder_consent,
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Patient self-registration database error")
+        raise HTTPException(status_code=500, detail="Unable to register with this clinic right now.")
+    except Exception:
+        db.rollback()
+        logger.exception("Unexpected patient self-registration error")
+        raise HTTPException(status_code=500, detail="Unable to complete patient registration.")
 
 
 @router.post("/access")
@@ -497,6 +685,7 @@ def get_patient_details(
             "token_number": patient["token_number"],
             "patient_status": patient["patient_status"],
             "joined_at": patient["joined_at"],
+            "voice_reminder_consent": bool(patient["voice_reminder_consent"]),
             "queue_paused": patient["queue_paused"],
             "waiting_ahead": waiting_ahead,
             "queue_position": queue_position,
@@ -507,6 +696,44 @@ def get_patient_details(
                         **prediction,
         }
     }
+
+
+@router.post("/voice-reminders/opt-out")
+def opt_out_of_voice_reminders(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Let an authenticated patient withdraw voice-reminder consent."""
+    patient = get_patient_context(request, db)
+    try:
+        db.execute(text("""
+            UPDATE public.queue_tokens
+            SET voice_reminder_consent = FALSE,
+                voice_reminder_opted_out_at = NOW(),
+                updated_at = NOW()
+            WHERE id = :token_id AND clinic_id = :clinic_id
+        """), {
+            "token_id": patient["token_id"],
+            "clinic_id": patient["clinic_id"],
+        })
+        db.execute(text("""
+            UPDATE public.ivr_reminders
+            SET status = 'SKIPPED',
+                last_error = 'Patient withdrew voice-reminder consent',
+                updated_at = NOW()
+            WHERE token_id = :token_id
+              AND clinic_id = :clinic_id
+              AND status = 'PENDING'
+        """), {
+            "token_id": patient["token_id"],
+            "clinic_id": patient["clinic_id"],
+        })
+        db.commit()
+        return {"status": "success", "voice_reminder_consent": False}
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Patient voice-reminder opt-out failed")
+        raise HTTPException(status_code=500, detail="Unable to update reminder preferences right now.")
 
 
 @router.post("/logout")

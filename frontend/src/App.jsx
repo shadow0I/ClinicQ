@@ -91,6 +91,12 @@ function App() {
   const [patientSex, setPatientSex] = useState('')
   const [patientMobile, setPatientMobile] = useState('')
   const [visitReason, setVisitReason] = useState('General check-up')
+  const [voiceReminderConsent, setVoiceReminderConsent] = useState(false)
+  const [ivrSettings, setIvrSettings] = useState(null)
+  const [ivrReminders, setIvrReminders] = useState([])
+  const [ivrLoading, setIvrLoading] = useState(false)
+  const [ivrError, setIvrError] = useState('')
+  const [ivrActionLoading, setIvrActionLoading] = useState(false)
   // Emergency management
 const [emergencyDelay, setEmergencyDelay] = useState('15')
 const [emergencyMessage, setEmergencyMessage] = useState(
@@ -175,6 +181,61 @@ if (custom) {
       if (!silent) setQueueLoading(false)
     }
   }, [])
+
+  const refreshIvr = useCallback(async () => {
+    setIvrLoading(true)
+    setIvrError('')
+    try {
+      const [settings, activity] = await Promise.all([
+        apiRequest('/api/staff/ivr/settings'),
+        apiRequest('/api/staff/ivr/reminders'),
+      ])
+      setIvrSettings(settings)
+      setIvrReminders(activity.reminders || [])
+    } catch (error) {
+      setIvrError(error.message || 'Unable to load IVR reminders.')
+    } finally {
+      setIvrLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!currentUser || activeTab !== 'ivr') return
+    refreshIvr()
+    const refreshTimer = window.setInterval(refreshIvr, 20000)
+    return () => window.clearInterval(refreshTimer)
+  }, [currentUser, activeTab, refreshIvr])
+
+  async function toggleIvrReminders() {
+    if (!ivrSettings) return
+    setIvrActionLoading(true)
+    setIvrError('')
+    try {
+      const result = await apiRequest('/api/staff/ivr/settings', {
+        method: 'POST',
+        body: JSON.stringify({ enabled: !ivrSettings.enabled }),
+      })
+      setIvrSettings((previous) => ({ ...previous, ...result }))
+      await refreshIvr()
+    } catch (error) {
+      setIvrError(error.message || 'Unable to update IVR settings.')
+    } finally {
+      setIvrActionLoading(false)
+    }
+  }
+
+  async function retryIvrReminder(reminderId) {
+    setIvrActionLoading(true)
+    setIvrError('')
+    try {
+      await apiRequest(`/api/staff/ivr/reminders/${reminderId}/retry`, { method: 'POST' })
+      await refreshIvr()
+    } catch (error) {
+      setIvrError(error.message || 'Unable to retry this reminder.')
+    } finally {
+      setIvrActionLoading(false)
+    }
+  }
 
   const activeDisruptions = queue?.active_disruptions || []
 
@@ -466,6 +527,7 @@ async function handleRegisterPatient() {
   sex: patientSex,
   mobile_number: patientMobile.trim(),
   visit_reason: visitReason,
+  voice_reminder_consent: voiceReminderConsent,
 }),
     })
 
@@ -474,6 +536,7 @@ async function handleRegisterPatient() {
     }
 
     setRegistration(data)
+    setVoiceReminderConsent(false)
     setCodeCopied(false)
 
     setNotice(
@@ -747,6 +810,15 @@ async function handleCopyAccessCode() {
     <span className="nav-icon">◷</span>
     Consultations
   </button>
+
+  <button
+    type="button"
+    className={`sidebar-link ${activeTab === 'ivr' ? 'active' : ''}`}
+    onClick={() => setActiveTab('ivr')}
+  >
+    <span className="nav-icon">☎</span>
+    Call reminders
+  </button>
 </nav>
 
 
@@ -960,7 +1032,10 @@ async function handleCopyAccessCode() {
         <button
           type="button"
           className="registration-close"
-          onClick={() => setShowRegistrationForm(false)}
+          onClick={() => {
+            setShowRegistrationForm(false)
+            setVoiceReminderConsent(false)
+          }}
           aria-label="Close registration"
         >
           ×
@@ -1036,6 +1111,18 @@ async function handleCopyAccessCode() {
                 <option value="Other">Other</option>
               </select>
             </label>
+
+            <label className="registration-full-width staff-ivr-consent">
+              <span className="staff-ivr-consent-row">
+                <input
+                  type="checkbox"
+                  checked={voiceReminderConsent}
+                  onChange={(event) => setVoiceReminderConsent(event.target.checked)}
+                />
+                <span>Patient agrees to an automated voice reminder when close to their turn.</span>
+              </span>
+              <small>Leave unchecked unless the patient has explicitly agreed.</small>
+            </label>
           </div>
 
           {registrationError && (
@@ -1048,7 +1135,10 @@ async function handleCopyAccessCode() {
             <button
               type="button"
               className="registration-cancel"
-              onClick={() => setShowRegistrationForm(false)}
+              onClick={() => {
+                setShowRegistrationForm(false)
+                setVoiceReminderConsent(false)
+              }}
               disabled={registerLoading}
             >
               Cancel
@@ -1861,6 +1951,87 @@ onClick={() =>
                 )}
               </section>
                </>
+)}
+
+{activeTab === 'ivr' && (
+  <section className="ivr-page">
+    <div className="tab-page-heading">
+      <span className="panel-eyebrow">PATIENT COMMUNICATION</span>
+      <h2>Automated call reminders</h2>
+      <p>Consent-based voice reminders are considered when a patient has one to three waiting tokens ahead.</p>
+    </div>
+
+    <section className="panel ivr-settings-panel">
+      <div className="ivr-settings-copy">
+        <span className="panel-eyebrow">CLINIC IVR SETTING</span>
+        <h3>{ivrSettings?.enabled ? 'Voice reminders enabled' : 'Voice reminders disabled'}</h3>
+        <p>Only patients who explicitly opted in during registration are eligible. Each token receives one automatic reminder; failed calls can be retried manually.</p>
+        {ivrSettings?.provider && (
+          <small className={`ivr-provider-state ${ivrSettings.provider.configured ? 'ready' : 'unconfigured'}`}>
+            {ivrSettings.provider.provider === 'mock'
+              ? 'Simulation mode — no real calls are placed.'
+              : ivrSettings.provider.configured
+                ? 'Exotel provider configured.'
+                : `Provider setup incomplete: ${ivrSettings.provider.missing.join(', ')}`}
+          </small>
+        )}
+      </div>
+      <div className="ivr-settings-actions">
+        <span className={`ivr-enabled-pill ${ivrSettings?.enabled ? 'on' : 'off'}`}>
+          {ivrSettings?.enabled ? 'ON' : 'OFF'}
+        </span>
+        <button
+          type="button"
+          className="register-action"
+          onClick={toggleIvrReminders}
+          disabled={ivrActionLoading || !ivrSettings?.can_manage || !ivrSettings?.provider?.configured}
+        >
+          {ivrActionLoading ? 'Saving...' : ivrSettings?.enabled ? 'Disable calls' : 'Enable calls'}
+        </button>
+      </div>
+    </section>
+
+    {ivrError && <div className="dashboard-alert error-message" role="alert">{ivrError}</div>}
+
+    <section className="panel ivr-activity-panel">
+      <div className="panel-heading">
+        <div>
+          <span className="panel-eyebrow">RECENT ACTIVITY</span>
+          <h3>Patient call history</h3>
+        </div>
+        <button type="button" className="refresh-button" onClick={refreshIvr} disabled={ivrLoading}>
+          {ivrLoading ? 'Refreshing...' : '↻ Refresh'}
+        </button>
+      </div>
+      <div className="ivr-table-wrap">
+        <table className="ivr-table">
+          <thead><tr><th>Token</th><th>Call status</th><th>Patient response</th><th>Attempts</th><th>Last update</th><th>Action</th></tr></thead>
+          <tbody>
+            {ivrReminders.map((reminder) => (
+              <tr key={reminder.id}>
+                <td><strong>#{reminder.token_number}</strong></td>
+                <td>
+                  <span className={`ivr-status ${String(reminder.status).toLowerCase()}`}>{String(reminder.status).replaceAll('_', ' ')}</span>
+                  {reminder.is_simulation && <small className="ivr-simulation-label">SIMULATED</small>}
+                  {reminder.last_error && <small className="ivr-error-note">{reminder.last_error}</small>}
+                </td>
+                <td>{reminder.patient_response === 'CONFIRMED' ? 'Confirmed' : reminder.patient_response === 'CALLBACK_REQUESTED' ? 'Callback requested' : reminder.patient_response || '—'}</td>
+                <td>{reminder.attempt_count}</td>
+                <td>{formatTime(reminder.dispatched_at || reminder.created_at)}</td>
+                <td>
+                  {reminder.status === 'FAILED' && reminder.attempt_count < 3 ? (
+                    <button type="button" className="ivr-retry-button" disabled={ivrActionLoading} onClick={() => retryIvrReminder(reminder.id)}>Retry</button>
+                  ) : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {ivrReminders.length === 0 && <p className="empty-queue-message">No reminder calls have been generated yet.</p>}
+      </div>
+      {!ivrSettings?.can_manage && <p className="ivr-permission-note">Only the clinic owner can enable or disable automated calls.</p>}
+    </section>
+  </section>
 )}
 
 {activeTab === 'consultations' && (

@@ -160,7 +160,7 @@
 
 .form-description {
   margin: 11px 0 34px;
-  color: #778580;
+  color: #52635a;
   font-size: 14px;
   line-height: 1.7;
 }
@@ -244,14 +244,14 @@
 
 .security-note {
   margin-top: 25px;
-  color: #98a49f;
+  color: #617168;
   font-size: 11px;
   text-align: center;
 }
 
 .form-footer {
   margin-top: 55px;
-  color: #9aa59f;
+  color: #627268;
   font-size: 11px;
 }
 
@@ -319,7 +319,7 @@
 
 .success-description {
   margin-top: 10px;
-  color: #778580;
+  color: #52635a;
   font-size: 13px;
 }
 
@@ -345,7 +345,7 @@
 }
 
 .profile-details span {
-  color: #83918a;
+  color: #58695f;
   font-size: 12px;
 }
 
@@ -368,7 +368,7 @@
 
 .session-note {
   margin-top: 18px;
-  color: #98a49f;
+  color: #617168;
   font-size: 11px;
   line-height: 1.6;
 }
@@ -430,7 +430,7 @@
   place-content: center;
   justify-items: center;
   gap: 14px;
-  color: #71817a;
+  color: #56665d;
   font-size: 13px;
 }
 
@@ -480,7 +480,7 @@
 
 .sidebar-label {
   margin: 55px 10px 14px;
-  color: #98a69e;
+  color: #627268;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 1.4px;
@@ -497,7 +497,7 @@
   gap: 13px;
   padding: 13px 12px;
   border-radius: 9px;
-  color: #7b8982;
+  color: #5b6b63;
   font-size: 13px;
   font-weight: 500;
 }
@@ -552,7 +552,7 @@
 }
 
 .sidebar-clinic span:last-child {
-  color: #97a49d;
+  color: #637268;
   font-size: 10px;
 }
 
@@ -583,7 +583,7 @@
 
 .topbar-caption {
   margin: 0 0 4px;
-  color: #89978f;
+  color: #5b6b62;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 1.4px;
@@ -626,7 +626,7 @@
 }
 
 .profile-text span {
-  color: #95a199;
+  color: #607067;
   font-size: 10px;
   text-transform: capitalize;
 }
@@ -715,7 +715,7 @@
 }
 
 .stat-label {
-  color: #85938b;
+  color: #5b6c62;
   font-size: 11px;
   font-weight: 500;
 }
@@ -800,7 +800,7 @@
 }
 
 .active-token-label {
-  color: #96a39b;
+  color: #607067;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 1.1px;
@@ -813,7 +813,7 @@
 }
 
 .active-patient > span:last-child {
-  color: #89968e;
+  color: #58695f;
   font-size: 11px;
 }
 
@@ -844,7 +844,7 @@
 .empty-consultation p {
   max-width: 280px;
   margin: 0;
-  color: #929e97;
+  color: #5d6d64;
   font-size: 10px;
   line-height: 1.6;
 }
@@ -876,7 +876,7 @@
 
 .control-description {
   margin: 17px 0 22px;
-  color: #89968f;
+  color: #58695f;
   font-size: 11px;
   line-height: 1.7;
 }
@@ -901,7 +901,7 @@
   align-items: center;
   gap: 8px;
   margin-top: 18px;
-  color: #89968f;
+  color: #58695f;
   font-size: 10px;
 }
 
@@ -952,7 +952,7 @@
 }
 
 .next-patient-info span {
-  color: #929e97;
+  color: #5d6d64;
   font-size: 10px;
 }
 
@@ -968,7 +968,7 @@
 
 .empty-queue-message {
   padding: 23px 0 5px;
-  color: #929e97;
+  color: #5d6d64;
   font-size: 11px;
   text-align: center;
 }
@@ -989,7 +989,7 @@
 .token-table th {
   padding: 12px 10px;
   border-bottom: 1px solid #e9efeb;
-  color: #94a097;
+  color: #607067;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.6px;
@@ -1214,7 +1214,7 @@
 
 .registration-description {
   margin: 13px 0 16px;
-  color: #89968f;
+  color: #58695f;
   font-size: 11px;
   line-height: 1.7;
 }
@@ -1272,7 +1272,7 @@
 
 .registration-result-heading p {
   margin-top: 4px;
-  color: #819188;
+  color: #5a6c62;
   font-size: 10px;
 }
 
@@ -1292,7 +1292,7 @@
 }
 
 .registration-details span {
-  color: #8a9990;
+  color: #5d6c64;
   font-size: 10px;
 }
 
@@ -1395,7 +1395,7 @@
 
 .registration-launcher-copy p {
   margin: 0;
-  color: #87968e;
+  color: #5d6c63;
   line-height: 1.6;
 }
 
@@ -1442,7 +1442,7 @@
 
 .registration-modal-header p {
   margin: 0;
-  color: #87968e;
+  color: #5d6c63;
   line-height: 1.5;
 }
 
@@ -1639,7 +1639,7 @@
 
 .tab-page-heading p {
   margin: 0;
-  color: #87968e;
+  color: #5d6c63;
   line-height: 1.6;
 }
 
@@ -1674,7 +1674,7 @@
 }
 
 .consultation-summary-card span {
-  color: #87968e;
+  color: #5d6c63;
   font-size: 14px;
 }
 
@@ -1697,7 +1697,7 @@
 }
 
 .consultations-empty p {
-  color: #87968e;
+  color: #5d6c63;
 }
 
 @media (max-width: 600px) {
@@ -1736,7 +1736,7 @@
 }
 
 .dashboard-next-patient > div > span:last-child {
-  color: #87968e;
+  color: #5d6c63;
   font-size: 13px;
 }
 
@@ -1807,7 +1807,7 @@
 
 .registration-launcher-copy p {
   margin: 0;
-  color: #87968e;
+  color: #5d6c63;
   font-size: 16px;
   line-height: 1.6;
 }
@@ -1883,7 +1883,7 @@
   gap: 6px;
   margin-top: 22px;
   font-size: 14px;
-  color: #87968e;
+  color: #5d6c63;
 }
 
 .portal-switch-link a {
@@ -2000,7 +2000,7 @@
 }
 
 .patient-form-description {
-  color: #87968e;
+  color: #5d6c63;
 }
 
 /* Patient footer */
@@ -2338,4 +2338,206 @@
   height: 7px;
   background: currentColor;
   border-radius: 1px;
+}
+/* IVR reminder management workspace */
+.ivr-page {
+  display: grid;
+  gap: 18px;
+}
+
+.ivr-settings-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 25px;
+}
+
+.ivr-settings-copy h3 {
+  margin: 8px 0;
+  color: #254638;
+  font-size: 19px;
+}
+
+.ivr-settings-copy p {
+  max-width: 680px;
+  margin: 0 0 10px;
+  color: #5b6c62;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.ivr-provider-state {
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ivr-provider-state.ready {
+  color: #21714f;
+}
+
+.ivr-provider-state.unconfigured {
+  color: #9c682a;
+}
+
+.ivr-settings-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.ivr-enabled-pill,
+.ivr-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 25px;
+  padding: 0 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .3px;
+}
+
+.ivr-enabled-pill.on,
+.ivr-status.completed {
+  color: #236946;
+  background: #e7f5eb;
+}
+
+.ivr-enabled-pill.off,
+.ivr-status.skipped {
+  color: #66756c;
+  background: #eef2ef;
+}
+
+.ivr-status.pending,
+.ivr-status.dispatching,
+.ivr-status.submitted,
+.ivr-status.in_progress {
+  color: #8c642b;
+  background: #fff4dd;
+}
+
+.ivr-status.failed {
+  color: #a13f3f;
+  background: #fce9e9;
+}
+
+.ivr-activity-panel {
+  padding: 24px;
+}
+
+.ivr-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.ivr-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+}
+
+.ivr-table th,
+.ivr-table td {
+  padding: 13px 10px;
+  border-bottom: 1px solid #edf1ee;
+  text-align: left;
+  font-size: 11px;
+}
+
+.ivr-table th {
+  color: #596a60;
+  font-size: 9px;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+}
+
+.ivr-table td {
+  color: #53665b;
+}
+
+.ivr-simulation-label,
+.ivr-error-note {
+  display: block;
+  max-width: 230px;
+  margin-top: 5px;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.ivr-simulation-label {
+  color: #8c6a31;
+  font-weight: 800;
+}
+
+.ivr-error-note {
+  color: #a14a4a;
+}
+
+.ivr-retry-button {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid #d1e1d7;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #176d52;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ivr-retry-button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.ivr-permission-note {
+  margin: 15px 0 0;
+  color: #5b6b62;
+  font-size: 11px;
+}
+
+.staff-ivr-consent {
+  display: grid !important;
+  gap: 7px !important;
+}
+
+.staff-ivr-consent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: #52675c;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.staff-ivr-consent-row input {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 1px 0 0;
+  accent-color: #176d52;
+}
+
+.staff-ivr-consent small {
+  color: #8b9990;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+@media (max-width: 700px) {
+  .ivr-settings-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ivr-settings-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
 }

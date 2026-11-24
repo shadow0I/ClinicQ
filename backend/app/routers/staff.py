@@ -165,7 +165,9 @@ def create_patient_token(
         age,
         sex,
         mobile_number,
-        visit_reason
+        visit_reason,
+        voice_reminder_consent,
+        voice_reminder_consent_at
     )
     VALUES (
         :clinic_id,
@@ -178,7 +180,9 @@ def create_patient_token(
         :age,
         :sex,
         :mobile_number,
-        :visit_reason
+        :visit_reason,
+        :voice_reminder_consent,
+        CASE WHEN :voice_reminder_consent THEN NOW() ELSE NULL END
     )
     RETURNING id, joined_at, status::text AS status
 """),
@@ -194,6 +198,7 @@ def create_patient_token(
                 "sex": payload.sex,
                 "mobile_number": payload.mobile_number,
                 "visit_reason": payload.visit_reason,
+                "voice_reminder_consent": payload.voice_reminder_consent,
             }
         ).mappings().one()
 

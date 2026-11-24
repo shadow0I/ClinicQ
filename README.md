@@ -20,6 +20,8 @@ The current project is an MVP. This README separates functionality that is prese
 
 ### Patient portal
 
+- Patients can discover active clinics that have enabled online registration, select a clinic and its active doctor, and self-register for the current queue.
+- Self-registration creates a clinic-scoped token, private access code, QR token and patient session. The access code is shown once and must be saved for future sign-in.
 - Patients can open their portal using the clinic QR code or enter their clinic code, token date, token number and private access code.
 - The portal shows the patient's own token number and status, queue position, number of patients ahead and currently serving token.
 - The portal shows an estimated waiting-time range when a forecast is available.
@@ -36,6 +38,15 @@ The current project is an MVP. This README separates functionality that is prese
 
 A forecast is an estimate, not a guaranteed appointment time. Actual waiting time can change as consultations and clinic operations change.
 
+### Automated voice reminders / IVR
+
+- Patients can explicitly opt in to an automated voice reminder during self-registration. Staff registration has the same opt-in field; it must remain unchecked unless the patient has agreed. The consent timestamp is recorded, and the patient can withdraw consent from their active patient portal. Pending reminders are cancelled on withdrawal; an outbound call that has already started cannot be recalled.
+- A background worker considers an opted-in waiting patient eligible when there are one to three waiting tokens ahead in the same clinic, doctor and clinic-local queue date.
+- Reminders are clinic-scoped and idempotent: the database allows one automatic `THREE_AHEAD` reminder per token. A reminder is skipped if the token is no longer waiting, consent is absent, the clinic disables calling, or the queue is paused.
+- The staff workspace has a Call reminders page with clinic-level enable/disable, provider readiness, recent call state, keypad response and limited manual retries.
+- The Exotel adapter uses the India API endpoint by default, an App Bazaar IVR flow URL, an ExoPhone caller ID and an authenticated server-side status callback. No recording is requested.
+- Set `IVR_PROVIDER=mock` to simulate a completed call locally. Mock mode never contacts a phone network. Live calling is disabled until all Exotel and public webhook settings are configured.
+
 ### Emergency and clinic messages
 
 - Staff can activate or update an emergency alert with an expected delay and a public message.
@@ -46,17 +57,15 @@ A forecast is an estimate, not a guaranteed appointment time. Actual waiting tim
 
 ## Planned features — not implemented in the current MVP
 
-The following are future improvements and should not be treated as working features in the current prototype:
+The following remain future improvements and should not be treated as working features:
 
-- Automated phone-call reminders or IVR calls, including keypad responses.
 - SMS reminders or SMS-based patient replies.
 - A separate late-arrival queue and configurable automatic skip after a grace period.
-- Self-service clinic registration and onboarding for new clinics.
-- A complete multi-clinic administration and subscription workflow.
+- Self-service onboarding for brand-new clinics and a full subscription/billing workflow.
 - Physical waiting-room crowd measurement or occupancy analytics.
 - Web Push notifications and a screen wake-lock reminder.
 
-The database and API use clinic identifiers to scope clinic records, but self-service onboarding for clinics is not currently available.
+Patient self-registration is for existing active clinics. It does not create a new clinic account or replace staff onboarding.
 
 ## Technology stack
 
@@ -78,20 +87,24 @@ ClinicQ/
 │   ├── app/
 │   │   ├── routers/
 │   │   │   ├── auth.py
+│   │   │   ├── ivr.py
 │   │   │   ├── patient.py
 │   │   │   └── staff.py
 │   │   ├── db.py
 │   │   ├── dependencies.py
+│   │   ├── ivr_service.py
+│   │   ├── main.py
 │   │   ├── prediction.py
 │   │   ├── prediction_service.py
 │   │   ├── queue_recovery.py
 │   │   ├── schemas.py
 │   │   └── security.py
-│   ├── schema.sql
+│   ├── migrations/
+│   │   └── 2026-11-22_multi_clinic_registration_ivr.sql
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
-│   ├── public/
+│   ├── index.html
 │   ├── src/
 │   │   ├── App.jsx
 │   │   ├── App.css
@@ -101,6 +114,35 @@ ClinicQ/
 │   └── vite.config.js
 └── README.md
 ```
+
+## Enable the new features in an existing installation
+
+1. Back up the PostgreSQL database before applying any schema change.
+2. Apply `backend/migrations/2026-11-22_multi_clinic_registration_ivr.sql` once to the existing ClinicQ database. It uses additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements and creates the IVR reminder table and indexes. Do not run the fresh-install schema over an existing database.
+3. Deploy the updated backend and frontend together. The patient self-registration option appears inside `/patient`; the staff Call reminders tab appears after staff login.
+4. Existing tokens default to `voice_reminder_consent = FALSE`. A previous patient registration is never treated as consent.
+5. Clinics are publicly discoverable only while active and `public_registration_enabled = TRUE`. This migration enables that flag by default for existing clinics; change it to `FALSE` for any clinic that should not accept public registrations.
+
+### IVR provider configuration
+
+For local UI/worker testing, set `IVR_PROVIDER=mock`. This simulates a successful reminder and never places a real call. A clinic owner can then enable calls from Staff → Call reminders and verify the activity history.
+
+For live Exotel calling, use `IVR_PROVIDER=exotel` and configure these backend environment variables (never put them in Vite or the frontend):
+
+- `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`, `EXOTEL_ACCOUNT_SID`
+- `EXOTEL_CALLER_ID` — the ExoPhone used as the caller ID
+- `EXOTEL_IVR_URL` — the App Bazaar flow URL for the reminder greeting and keypad menu
+- `EXOTEL_API_HOST=api.in.exotel.com` for an India-based account (use `api.exotel.com` only if the account is provisioned in Singapore)
+- `PUBLIC_API_BASE_URL` — the public HTTPS base URL of the FastAPI service
+- `IVR_WEBHOOK_SECRET` — a long random secret used to authenticate webhook requests
+
+In Exotel, create an App Bazaar flow with a clear ClinicQ reminder greeting and a one-digit DTMF Gather step. Recommended options: press 1 to confirm that the reminder was received; press 2 to request a call from reception. Configure the Gather action URL as `https://<your-api-host>/api/ivr/webhooks/response?token=<IVR_WEBHOOK_SECRET>` and verify that Exotel posts `CallSid` and `DigitsPressed`; ClinicQ matches the call ID to its reminder record, stores the first keypad response and returns a short ExoML spoken response followed by hang-up. The endpoint also accepts an opaque `CustomField` reminder ID when your flow passes it through. The call-status callback URL supplied by ClinicQ is `/api/ivr/webhooks/exotel` with the shared secret in its query string. The Connect-with-Flow request deliberately omits `StatusCallbackEvents`: Exotel documents that event selection as unsupported when a Flow `Url` is supplied, while the default callback reports the terminal status. Test the complete IVR flow using a staff/test phone before enabling it for patients.
+
+Exotel's Voice V1 Connect Flow uses HTTP Basic authentication and the India host `api.in.exotel.com`; its `From`, `CallerId` and `Url` parameters start the outbound call and run the App Bazaar flow. Status callbacks can include the call ID, status and original `CustomField`. See the [Connect Voice AI with Flow documentation](https://developer.exotel.com/docs/agentstream/connect-voice-ai-flow) and [call status callback reference](https://developer.exotel.com/docs/voice-v1/api-reference/call-details).
+
+Before live calling, complete Exotel account/ExoPhone onboarding and obtain the originating access provider's required A2P/auto-dialer declaration for this use case and the exact caller-ID CLI. TRAI's 18 September 2026 summary says entities using A2P calls must pre-declare that use and the CLIs they will use; it also identifies designated commercial-call series including 1600xx/1601xx. Ask Exotel and the originating access provider which registered service/transactional category and CLI series apply to a clinic queue reminder before enabling real calls. Do not assume the API parameter `CallType=trans` by itself establishes regulatory classification. ClinicQ never requests call recording. Do not use this reminder feature for promotional calls.
+
+The background worker polls every 15 seconds. A live call is attempted only when all provider credentials, caller ID, IVR flow URL, public HTTPS base URL and webhook secret are present, and the clinic owner has enabled voice reminders. The worker sends only an Indian mobile number in E.164 form and an opaque reminder ID; it does not send patient names or visit reasons to Exotel.
 
 ## Run locally
 
@@ -112,11 +154,9 @@ ClinicQ/
 
 ### 1. Set up the database
 
-Create an empty PostgreSQL database and a database user with permission to create and use the application's tables. Run `backend/schema.sql` against that empty database.
+This implementation ZIP is an additive update for the existing ClinicQ database, not a fresh-install database bundle. It does not include the original base schema. Keep your existing ClinicQ PostgreSQL database and take a backup before applying the new migration. If you need a fresh installation, first restore the project's original base schema and trusted clinic/staff provisioning process; do not attempt to create a new installation using only the feature migration in this ZIP.
 
-`backend/schema.sql` is the fresh-install schema. Do not run it over an existing database that already contains ClinicQ data. Use a reviewed, versioned migration for an existing database instead.
-
-The schema creates the database tables; it does not provide a public default staff login. Before signing in, provision the initial clinic, doctor and staff account through a trusted one-time setup or seed process. Do not publish or reuse default credentials.
+The migration creates only the additional registration and IVR fields/tables. Existing staff accounts, clinics, doctors and queue data must already exist. Do not publish or reuse default credentials.
 
 ### 2. Configure the backend
 
@@ -164,7 +204,7 @@ Open a second terminal from the project root:
 
 ```powershell
 cd frontend
-npm ci
+npm install
 npm run dev
 ```
 
@@ -201,7 +241,7 @@ The repository currently does not include a comprehensive automated integration-
 
 ## Current scope and limitations
 
-The current staff queue view selects the first active doctor configured for the clinic. The prototype is focused on a single-clinic/single-active-doctor workflow. Clinic-scoped database records provide a foundation for future multi-clinic support, but clinic self-registration and a full multi-clinic management interface remain planned work.
+The current staff queue view selects the first active doctor configured for the selected clinic. Patient self-registration supports multiple existing active clinics, while each staff login remains scoped to one clinic. A cross-clinic owner/admin dashboard and multi-doctor queue operations are not implemented.
 
 ## Project status
 

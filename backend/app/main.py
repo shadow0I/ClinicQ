@@ -1,6 +1,8 @@
 
 import os
 import logging
+import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import engine
-from app.routers import auth, patient, staff
+from app.routers import auth, patient, staff, ivr
+from app.ivr_service import ivr_worker_loop
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clinicq")
@@ -24,7 +27,21 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    worker_task = asyncio.create_task(ivr_worker_loop())
+    try:
+        yield
+    finally:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="ClinicQ API",
     description="Queue Prediction and Crowd Management Engine",
     version="0.3.0"
@@ -58,6 +75,7 @@ async def check_request_origin(request, call_next):
 app.include_router(auth.router)
 app.include_router(staff.router)
 app.include_router(patient.router)
+app.include_router(ivr.router)
 
 
 @app.get("/health")

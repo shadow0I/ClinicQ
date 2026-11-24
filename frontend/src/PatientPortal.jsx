@@ -1,5 +1,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import './PatientPortal.css'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
@@ -80,6 +81,52 @@ function PatientPortal() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [liveStatus, setLiveStatus] = useState('connecting')
+  const [showSelfRegistration, setShowSelfRegistration] = useState(false)
+  const [publicClinics, setPublicClinics] = useState([])
+  const [publicDoctors, setPublicDoctors] = useState([])
+  const [selectedClinicCode, setSelectedClinicCode] = useState('')
+  const [selectedDoctorId, setSelectedDoctorId] = useState('')
+  const [selfRegistration, setSelfRegistration] = useState({
+    patient_name: '', age: '', sex: '', mobile_number: '',
+    visit_reason: 'General check-up', voice_reminder_consent: false,
+  })
+  const [selfRegisterLoading, setSelfRegisterLoading] = useState(false)
+  const [selfRegisterError, setSelfRegisterError] = useState('')
+  const [registrationReceipt, setRegistrationReceipt] = useState(null)
+  const [receiptCopied, setReceiptCopied] = useState(false)
+  const [voiceOptOutLoading, setVoiceOptOutLoading] = useState(false)
+
+  useEffect(() => {
+    if (!showSelfRegistration || publicClinics.length) return
+    let active = true
+    patientRequest('/api/patient/clinics')
+      .then((data) => {
+        if (active) setPublicClinics(data.clinics || [])
+      })
+      .catch((err) => {
+        if (active) setSelfRegisterError(err.message || 'Unable to load clinics.')
+      })
+    return () => { active = false }
+  }, [showSelfRegistration, publicClinics.length])
+
+  useEffect(() => {
+    if (!selectedClinicCode) {
+      setPublicDoctors([])
+      setSelectedDoctorId('')
+      return
+    }
+    let active = true
+    setPublicDoctors([])
+    setSelectedDoctorId('')
+    patientRequest(`/api/patient/clinics/${encodeURIComponent(selectedClinicCode)}/doctors`)
+      .then((data) => {
+        if (active) setPublicDoctors(data.doctors || [])
+      })
+      .catch((err) => {
+        if (active) setSelfRegisterError(err.message || 'Unable to load doctors.')
+      })
+    return () => { active = false }
+  }, [selectedClinicCode])
 
   // Restore an existing patient session when the page is opened.
   useEffect(() => {
@@ -185,6 +232,64 @@ function PatientPortal() {
     }
   }
 
+  async function handleSelfRegistration(event) {
+    event.preventDefault()
+    setSelfRegisterLoading(true)
+    setSelfRegisterError('')
+    setNotice('')
+
+    try {
+      if (!selectedClinicCode || !selectedDoctorId) {
+        throw new Error('Select a clinic and doctor to continue.')
+      }
+      const receipt = await patientRequest('/api/patient/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          clinic_code: selectedClinicCode,
+          doctor_id: selectedDoctorId,
+          ...selfRegistration,
+          age: Number(selfRegistration.age),
+          patient_name: selfRegistration.patient_name.trim(),
+          mobile_number: selfRegistration.mobile_number.trim(),
+        }),
+      })
+      const data = await patientRequest('/api/patient/me')
+      setRegistrationReceipt(receipt)
+      setReceiptCopied(false)
+      setPatient(data.patient)
+      setNotice('Registration completed. Save your private access code before leaving this page.')
+      setAccessCode('')
+    } catch (err) {
+      setSelfRegisterError(err.message || 'Unable to complete registration.')
+    } finally {
+      setSelfRegisterLoading(false)
+    }
+  }
+
+  async function copyRegistrationCode() {
+    if (!registrationReceipt?.patient_access_code) return
+    try {
+      await navigator.clipboard.writeText(registrationReceipt.patient_access_code)
+      setReceiptCopied(true)
+    } catch {
+      setSelfRegisterError('Clipboard unavailable. Select the code and copy it manually.')
+    }
+  }
+
+  async function optOutOfVoiceReminders() {
+    setVoiceOptOutLoading(true)
+    setError('')
+    try {
+      await patientRequest('/api/patient/voice-reminders/opt-out', { method: 'POST' })
+      setPatient((previous) => previous ? { ...previous, voice_reminder_consent: false } : previous)
+      setNotice('Automated voice reminders have been turned off for this visit.')
+    } catch (err) {
+      setError(err.message || 'Unable to update your reminder preference.')
+    } finally {
+      setVoiceOptOutLoading(false)
+    }
+  }
+
   const refreshPatientDetails = useCallback(async () => {
   setRefreshing(true)
 
@@ -270,6 +375,14 @@ useEffect(() => {
       })
 
       setPatient(null)
+      setRegistrationReceipt(null)
+      setSelfRegistration({
+        patient_name: '', age: '', sex: '', mobile_number: '',
+        visit_reason: 'General check-up', voice_reminder_consent: false,
+      })
+      setSelectedClinicCode('')
+      setSelectedDoctorId('')
+      setShowSelfRegistration(false)
       setAccessCode('')
       setTokenNumber('')
       setTokenDate('')
@@ -435,6 +548,101 @@ useEffect(() => {
               </button>
             </form>
 
+            <div className="patient-register-divider"><span>NEW TO THIS CLINIC?</span></div>
+            <button
+              type="button"
+              className="patient-register-toggle"
+              onClick={() => {
+                setShowSelfRegistration((value) => !value)
+                setSelfRegisterError('')
+              }}
+            >
+              {showSelfRegistration ? 'Hide registration form' : 'Register yourself for a visit'}
+            </button>
+
+            {showSelfRegistration && (
+              <form className="patient-self-register-form" onSubmit={handleSelfRegistration}>
+                <div className="patient-form-group">
+                  <label htmlFor="selfClinic">Choose clinic</label>
+                  <select
+                    id="selfClinic"
+                    value={selectedClinicCode}
+                    onChange={(event) => setSelectedClinicCode(event.target.value)}
+                    required
+                  >
+                    <option value="">Select a clinic</option>
+                    {publicClinics.map((clinic) => (
+                      <option key={clinic.clinic_code} value={clinic.clinic_code}>
+                        {clinic.name} ({clinic.clinic_code})
+                      </option>
+                    ))}
+                  </select>
+                  {publicClinics.length === 0 && (
+                    <small>Loading available clinics, or no clinic has enabled online registration.</small>
+                  )}
+                </div>
+
+                <div className="patient-form-group">
+                  <label htmlFor="selfDoctor">Choose doctor</label>
+                  <select
+                    id="selfDoctor"
+                    value={selectedDoctorId}
+                    onChange={(event) => setSelectedDoctorId(event.target.value)}
+                    required
+                    disabled={!selectedClinicCode || publicDoctors.length === 0}
+                  >
+                    <option value="">Select a doctor</option>
+                    {publicDoctors.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>{doctor.display_name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="patient-form-group">
+                  <label htmlFor="selfPatientName">Full name</label>
+                  <input id="selfPatientName" value={selfRegistration.patient_name} minLength={2} maxLength={100} required
+                    onChange={(event) => setSelfRegistration((form) => ({ ...form, patient_name: event.target.value }))} />
+                </div>
+                <div className="patient-form-group">
+                  <label htmlFor="selfPatientAge">Age</label>
+                  <input id="selfPatientAge" type="number" min="0" max="120" value={selfRegistration.age} required
+                    onChange={(event) => setSelfRegistration((form) => ({ ...form, age: event.target.value }))} />
+                </div>
+                <div className="patient-form-group">
+                  <label htmlFor="selfPatientSex">Sex</label>
+                  <select id="selfPatientSex" value={selfRegistration.sex} required
+                    onChange={(event) => setSelfRegistration((form) => ({ ...form, sex: event.target.value }))}>
+                    <option value="">Select</option><option>Male</option><option>Female</option><option>Other</option><option>Prefer not to say</option>
+                  </select>
+                </div>
+                <div className="patient-form-group">
+                  <label htmlFor="selfPatientMobile">Mobile number</label>
+                  <input id="selfPatientMobile" type="tel" inputMode="numeric" pattern="[6-9][0-9]{9}" maxLength={10} value={selfRegistration.mobile_number} required
+                    placeholder="10-digit Indian mobile number"
+                    onChange={(event) => setSelfRegistration((form) => ({ ...form, mobile_number: event.target.value.replace(/\D/g, '').slice(0, 10) }))} />
+                </div>
+                <div className="patient-form-group">
+                  <label htmlFor="selfVisitReason">Visit type</label>
+                  <select id="selfVisitReason" value={selfRegistration.visit_reason}
+                    onChange={(event) => setSelfRegistration((form) => ({ ...form, visit_reason: event.target.value }))}>
+                    <option>General check-up</option><option>Follow-up check-up</option><option>Other</option>
+                  </select>
+                </div>
+
+                <label className="patient-ivr-consent">
+                  <input type="checkbox" checked={selfRegistration.voice_reminder_consent}
+                    onChange={(event) => setSelfRegistration((form) => ({ ...form, voice_reminder_consent: event.target.checked }))} />
+                  <span>Optional: I agree to receive an automated voice reminder when I am close to my turn. Standard call charges may apply.</span>
+                </label>
+
+                {selfRegisterError && <div className="patient-error" role="alert">{selfRegisterError}</div>}
+                <button type="submit" className="patient-submit" disabled={selfRegisterLoading || publicDoctors.length === 0}>
+                  {selfRegisterLoading ? 'Registering...' : 'Create my queue token'}
+                </button>
+                <p className="patient-register-privacy">Your details are shared only with the clinic you select. Voice reminders are sent only when you opt in and the clinic has enabled calling.</p>
+              </form>
+            )}
+
             <p className="patient-security-note">
               Your private access code is verified securely. Never
               share it with anyone other than authorised clinic staff.
@@ -507,6 +715,39 @@ useEffect(() => {
           <div className="patient-error" role="alert">
             {error}
           </div>
+        )}
+
+        {registrationReceipt && (
+          <section className="patient-registration-receipt" aria-live="polite">
+            <div>
+              <p className="patient-eyebrow">REGISTRATION COMPLETE</p>
+              <h2>Your token is #{registrationReceipt.token_number}</h2>
+              <p>{registrationReceipt.clinic_name} · Dr. {registrationReceipt.doctor_name}</p>
+              <div className="patient-receipt-code">
+                <span>Private access code</span>
+                <code>{registrationReceipt.patient_access_code}</code>
+                <button type="button" onClick={copyRegistrationCode}>{receiptCopied ? 'Copied' : 'Copy code'}</button>
+              </div>
+              <small>Keep this code. You will need it to sign in again if you sign out or change devices.</small>
+            </div>
+            <div className="patient-receipt-qr">
+              <QRCodeSVG value={`${window.location.origin}/patient#qr=${encodeURIComponent(registrationReceipt.qr_token)}`} size={124} level="H" />
+              <span>Patient QR access</span>
+            </div>
+            <button type="button" className="patient-receipt-dismiss" onClick={() => setRegistrationReceipt(null)} aria-label="Dismiss registration details">×</button>
+          </section>
+        )}
+
+        {patient.voice_reminder_consent && (
+          <section className="patient-voice-consent" aria-label="Voice reminder preference">
+            <div>
+              <strong>Automated voice reminders are enabled for this visit.</strong>
+              <p>You can turn them off at any time. Calls already in progress cannot be recalled.</p>
+            </div>
+            <button type="button" onClick={optOutOfVoiceReminders} disabled={voiceOptOutLoading}>
+              {voiceOptOutLoading ? 'Updating...' : 'Turn off calls'}
+            </button>
+          </section>
         )}
 
         <section className="patient-token-card">

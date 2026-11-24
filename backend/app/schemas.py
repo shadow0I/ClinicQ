@@ -46,8 +46,40 @@ class StaffTokenCreate(BaseModel):
         pattern=r"^[6-9]\d{9}$"
     )
     visit_reason: str = Field(
-    pattern=r"^(General check-up|Follow-up check-up|Other)$"
-)
+        pattern=r"^(General check-up|Follow-up check-up|Other)$"
+    )
+    voice_reminder_consent: bool = False
+
+
+
+class PatientSelfRegistration(BaseModel):
+    clinic_code: str = Field(min_length=4, max_length=20)
+    doctor_id: UUID
+    patient_name: str = Field(min_length=2, max_length=100)
+    age: int = Field(ge=0, le=120)
+    sex: str = Field(pattern=r"^(Male|Female|Other|Prefer not to say)$")
+    mobile_number: str = Field(pattern=r"^[6-9]\d{9}$")
+    visit_reason: str = Field(
+        pattern=r"^(General check-up|Follow-up check-up|Other)$"
+    )
+    voice_reminder_consent: bool = False
+
+    @field_validator("clinic_code")
+    @classmethod
+    def validate_clinic_code(cls, value):
+        value = value.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9]{4,20}", value):
+            raise ValueError("Invalid clinic code format")
+        return value
+
+    @field_validator("patient_name")
+    @classmethod
+    def validate_patient_name(cls, value):
+        value = " ".join(value.split())
+        if len(value) < 2:
+            raise ValueError("Enter a valid patient name")
+        return value
+
 
 class PatientQRAccessRequest(BaseModel):
     qr_token: str = Field(min_length=32, max_length=128)
